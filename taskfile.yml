@@ -1,0 +1,17 @@
+version: "3"
+
+tasks:
+  init:pre-commit:
+    desc: Install pre-commit hooks
+    cmds:
+      - uv add pre-commit --dev
+      - uv run pre-commit install --hook-type commit-msg
+
+  run:pg-container:
+    desc: Run the postgres benchmark
+    cmds:
+    - docker pull postgres
+    - docker run --name postgres-container -e POSTGRES_USER=user -e POSTGRES_PASSWORD=research-project -e POSTGRES_DB=postgres -p 5432:5432 -d postgres
+    - docker exec -it d267 psql -U user -d postgres -c "SHOW max_locks_per_transaction;"
+    - docker exec -it d267 psql -U user -d postgres -c "ALTER SYSTEM SET max_locks_per_transaction = 8192;"
+    - docker restart postgres_container
