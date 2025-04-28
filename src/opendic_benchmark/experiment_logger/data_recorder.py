@@ -2,21 +2,25 @@
 Data recorder. Handle recording of results and experiment metadata.
 """
 
-import duckdb
 from datetime import datetime
 from enum import Enum
+
+import duckdb
 
 
 class DatabaseSystem(Enum):
     """Enum for predefined systems to ensure consistency"""
+
     SQLITE = "sqlite"
     POSTGRES = "postgres"
     DUCKDB = "duckDB"
     SNOWFLAKE = "snowflake"
+    OPENDIC_POLARIS = "opendictpolaris"
 
 
 class DatabaseObject(Enum):
     """Enum for predefined target objects in experiments"""
+
     TABLE = "table"
     INDEX = "index"
     VIEW = "view"
@@ -27,6 +31,7 @@ class DatabaseObject(Enum):
 
 class Granularity(Enum):
     """Enum for predefined granularities in experiments"""
+
     s_1 = 1
     s_10 = 10
     s_100 = 100
@@ -37,6 +42,7 @@ class Granularity(Enum):
 
 class DDLCommand(Enum):
     """Enum for predefined DDL commands in experiments"""
+
     CREATE = "CREATE"
     DROP = "DROP"
     ALTER = "ALTER"
@@ -101,6 +107,7 @@ class DataRecorder:
         )
         with duckdb.connect(self.db_name) as conn:
             conn.execute(insert_query, record)
+
 
 # Example
 if __name__ == "__main__":

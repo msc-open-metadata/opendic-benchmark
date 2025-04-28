@@ -1,5 +1,5 @@
 """
-Main experiment file. Run experiment for all data systems (Sqlite, Postgresql, duckdb, snowflake)
+Main experiment file. Run experiment for all data systems (Sqlite, Postgresql, duckdb, snowflake, opendictpolaris)
 """
 
 import argparse
@@ -9,12 +9,13 @@ import os
 import random
 import sqlite3
 import sys
-from typing import Any
 
 import duckdb
 import psycopg2
 import snowflake.connector
 import yaml
+from snowflake_opendic.catalog import OpenDicSnowflakeCatalog
+from snowflake_opendic.snow_opendic import snowflake_connect
 
 from opendic_benchmark.experiment_logger.data_recorder import (
     DatabaseObject,
@@ -25,12 +26,16 @@ from opendic_benchmark.experiment_logger.data_recorder import (
 )
 
 # Configure logging
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 recorder = DataRecorder()
+
+
+def read_secret(secret_name: str, secrets_path: str = "/run/secrets/") -> str:
+    """Get `secret_name` from docker-compose secret store"""
+    filepath = f"{secrets_path}/{secret_name}"
+    with open(filepath, "r") as f:
+        return f.read().strip()  # Remove any trailing newline
 
 
 # Init connections
@@ -52,54 +57,52 @@ def connect_snowflake() -> snowflake.connector.connection.SnowflakeConnection:
     return snowflake.connector.connect(**snowflake_conf)
 
 
+def connect_opendict(
+    principal_secrets_path: str = "../polaris-boot/secrets/", openidic_api_url: str = "http://localhost:8181/api"
+) -> OpenDicSnowflakeCatalog:
+    config_path = "secrets/snowflake-conf.toml"
+    snowflake_conn = snowflake_connect(config_path=config_path)
+    engineer_client_id = read_secret("engineer_client_id", "../polaris-boot/secrets/")
+    engineer_client_secret = read_secret("engineer_client_secret")
+    return OpenDicSnowflakeCatalog(
+        snowflake_conn=snowflake_conn,
+        api_url=openidic_api_url,
+        client_id=engineer_client_id,
+        client_secret=engineer_client_secret,
+    )
+
+
 def _execute_timed_query(
     database_system: DatabaseSystem, query: str
 ) -> tuple[datetime.datetime, datetime.datetime, datetime.timedelta]:
     """Execute query and log the query time"""
     _current_task_loading(query=query)
 
-    connection_map: dict[DatabaseSystem, Any] = {
-            DatabaseSystem.SQLITE: connect_sqlite,
-            DatabaseSystem.DUCKDB: connect_duckdb,
-            DatabaseSystem.POSTGRES: connect_postgres,
-            DatabaseSystem.SNOWFLAKE: connect_snowflake
-        }
-
-
     start_time = datetime.datetime.now()
 
-    connect_func = connection_map.get(database_system)
-    if not connect_func:
-        raise ValueError(f"Unsupported database system: {database_system}")
-
-        start_time = datetime.datetime.now()
-
-    with connect_func() as conn:
-            if database_system == DatabaseSystem.SQLITE:
-                conn.execute(query)
-                conn.commit()
-            elif database_system in (DatabaseSystem.POSTGRES, DatabaseSystem.SNOWFLAKE):
-                with conn.cursor() as curs:
-                    curs.execute(query)
-            else:  # DuckDB
-                conn.execute(query)
+    if database_system == DatabaseSystem.SQLITE:
+        with connect_sqlite() as sqlite_conn:
+            sqlite_conn.execute(query)
+            sqlite_conn.commit()
+    elif database_system == DatabaseSystem.DUCKDB:
+        with connect_duckdb() as duck_conn:
+            duck_conn.execute(query)
+    elif database_system == DatabaseSystem.POSTGRES:
+        with connect_postgres() as pg_conn:
+            with pg_conn.cursor() as pg_curs:
+                pg_curs.execute(query)
+    elif database_system == DatabaseSystem.SNOWFLAKE:
+        with connect_snowflake() as snowflake_conn:
+            with snowflake_conn.cursor() as snowflake_curr:
+                snowflake_curr.execute(query)
+    elif database_system == DatabaseSystem.OPENDIC_POLARIS:
+        opendic_conn: OpenDicSnowflakeCatalog = connect_opendict()
+        opendic_conn.sql(query)
 
     end_time = datetime.datetime.now()
 
     return start_time, end_time, end_time - start_time
 
-
-def get_connection(database_system: DatabaseSystem):
-    if database_system == DatabaseSystem.DUCKDB:
-        return duckdb.connect("duckdb.db")
-    elif database_system == DatabaseSystem.SQLITE:
-        return sqlite3.connect("sqlite.db")
-    elif database_system == DatabaseSystem.POSTGRES:
-        postgres_conf = yaml.safe_load(open(".config.yaml"))["postgres_conf"]
-        return psycopg2.connect(**postgres_conf)
-    elif database_system == DatabaseSystem.SNOWFLAKE:
-        snowflake_conf = yaml.safe_load(open(".config.yaml"))["snowflake_conf"]
-        return snowflake.connector.connect(**snowflake_conf)
 
 def _current_task_loading(query: str):
     """Simulate progress loading in terminal. Writes the following: "--running: {query}..." to terminal. The dots should blink while the query is running."""
@@ -128,9 +131,7 @@ def create_tables(
     for i in range(num_objects.value):
         query = f"CREATE TABLE t_{i} (id INTEGER PRIMARY KEY, value TEXT);"
 
-        start_time, end_time, query_time = _execute_timed_query(
-            query=query, database_system=database_system
-        )
+        start_time, end_time, query_time = _execute_timed_query(query=query, database_system=database_system)
         if logging:
             record = (
                 database_system,
@@ -152,9 +153,7 @@ def alter_tables(database_system: DatabaseSystem, granularity: Granularity, num_
     print()
     table_num = random.randint(0, granularity.value - 1)  # In case of prefetching
     query = f"ALTER TABLE t_{table_num} ADD COLUMN altered_{num_exp} TEXT;"
-    start_time, end_time, query_time = _execute_timed_query(
-        query=query, database_system=database_system
-    )
+    start_time, end_time, query_time = _execute_timed_query(query=query, database_system=database_system)
     record = (
         database_system,
         DDLCommand.ALTER,
@@ -189,16 +188,12 @@ def _comment_object(
     object_num = random.randint(0, granularity.value - 1)
     if database_system == DatabaseSystem.SQLITE and database_object.value == "table":
         # ALTER column name
-        query = (
-            f"alter {database_object.value} t_{object_num} RENAME COLUMN value TO value_altered;"
-        )
+        query = f"alter {database_object.value} t_{object_num} RENAME COLUMN value TO value_altered;"
     else:
         query = f"comment on {database_object.value} t_{object_num} is 'This {database_object.value} has been altered';"
 
     _current_task_loading(query)
-    start_time, end_time, query_time = _execute_timed_query(
-        query=query, database_system=database_system
-    )
+    start_time, end_time, query_time = _execute_timed_query(query=query, database_system=database_system)
     record = (
         database_system,
         DDLCommand.COMMENT,
@@ -240,11 +235,11 @@ def show_objects(
         """
     elif database_system == DatabaseSystem.SNOWFLAKE:
         query = "show tables limit 10000"
+    elif database_system == DatabaseSystem.OPENDIC_POLARIS:
+        query = f"show open {database_object.value}"
     else:
         query = "show tables"
-    start_time, end_time, query_time = _execute_timed_query(
-        query=query, database_system=database_system
-    )
+    start_time, end_time, query_time = _execute_timed_query(query=query, database_system=database_system)
     record = (
         database_system,
         DDLCommand.SHOW,
@@ -260,9 +255,10 @@ def show_objects(
     print()
 
 
-def drop_schema(database_system: DatabaseSystem):
+def drop_schema(database_system: DatabaseSystem, database_object: DatabaseObject = DatabaseObject.TABLE):
     """Example: drop schema/db"""
     # switch case:
+    drop_query: str = "None"
     try:
         if database_system == DatabaseSystem.SQLITE:
             if os.path.exists("sqlite.db"):
@@ -270,18 +266,23 @@ def drop_schema(database_system: DatabaseSystem):
                 logging.info(f"Dropped: {database_system}")
         if database_system == DatabaseSystem.DUCKDB:
             drop_query = "DROP SCHEMA experiment CASCADE;"
-            _ = _execute_timed_query(query=drop_query, database_system=database_system)
         if database_system == DatabaseSystem.POSTGRES:
             drop_query = """DROP SCHEMA public CASCADE;
                             CREATE SCHEMA public;"""
-            _ = _execute_timed_query(query=drop_query, database_system=database_system)
         if database_system == DatabaseSystem.SNOWFLAKE:
-            with connect_snowflake() as conn:
-                with conn.cursor() as curs:
-                    curs.execute("use schema public")
-                    curs.execute("DROP SCHEMA if exists metadata_experiment CASCADE;")
+            drop_query = """
+            use schema public;
+            DROP SCHEMA if exists metadata_experiment CASCADE;
+            """
+        if database_system == DatabaseSystem.OPENDIC_POLARIS:
+            drop_query = f"DROP OPEN {database_object.value}"
         else:
             logging.error("Database system not dropped")
+
+        if drop_query == "None":
+            logging.info("No drop query provided")
+        else:
+            _ = _execute_timed_query(query=drop_query, database_system=database_system)
     except Exception as e:
         logging.error(f"Drop schema failed: {e}")
 
@@ -291,9 +292,7 @@ def experiment_1(database_system: DatabaseSystem):
         logging.info("Starting experiment 1!")
 
         for gran in Granularity:
-            logging.info(
-                f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started"
-            )
+            logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
 
             create_tables(database_system=database_system, num_objects=gran)
             for num_exp in range(3):
@@ -308,9 +307,7 @@ def experiment_1(database_system: DatabaseSystem):
                     granularity=gran,
                     num_exp=num_exp,
                 )
-            logging.info(
-                f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: SUCCESSFUL"
-            )
+            logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: SUCCESSFUL")
             drop_schema(database_system)
     except Exception as e:
         logging.error(f"Experiment 1 failed: {e}")
@@ -321,21 +318,27 @@ def experiment_1(database_system: DatabaseSystem):
 
 def main():
     # Set up command line argument parsing
-    parser = argparse.ArgumentParser(description='Run database metadata experiments')
-    parser.add_argument('--db', type=str, required=True, choices=['sqlite', 'duckdb', 'postgres', 'snowflake'],
-                        help='Database system to test')
+    parser = argparse.ArgumentParser(description="Run database metadata experiments")
+    parser.add_argument(
+        "--db",
+        type=str,
+        required=True,
+        choices=["sqlite", "duckdb", "postgres", "snowflake", "opendic_polaris"],
+        help="Database system to test",
+    )
 
     args = parser.parse_args()
 
     # Map command line argument to DatabaseSystem enum
-    db_system_map = {
-        'sqlite': DatabaseSystem.SQLITE,
-        'duckdb': DatabaseSystem.DUCKDB,
-        'postgres': DatabaseSystem.POSTGRES,
-        'snowflake': DatabaseSystem.SNOWFLAKE
+    db_system_map: dict[str, DatabaseSystem] = {
+        "sqlite": DatabaseSystem.SQLITE,
+        "duckdb": DatabaseSystem.DUCKDB,
+        "postgres": DatabaseSystem.POSTGRES,
+        "snowflake": DatabaseSystem.SNOWFLAKE,
+        "opendic_polaris": DatabaseSystem.OPENDIC_POLARIS,
     }
 
-    database_system = db_system_map[args.db]
+    database_system: DatabaseSystem = db_system_map[args.db]
 
     try:
         # Clean up any existing schemas first
