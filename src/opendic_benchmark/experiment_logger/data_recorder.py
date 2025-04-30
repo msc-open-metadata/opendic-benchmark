@@ -53,6 +53,7 @@ class DDLCommand(Enum):
 class DataRecorder:
     def __init__(self, db_name="experiment_logs.db"):
         self.db_name: str = db_name
+        self.conn = duckdb.connect(self.db_name)
 
         # Initialize tables for all systems when we init
         self._initialize_tables()
@@ -71,10 +72,8 @@ class DataRecorder:
                 query_runtime DOUBLE,
                 start_time TIMESTAMP,
                 end_time TIMESTAMP,
-                PRIMARY KEY(system_name, ddl_command, target_object, granularity, repetition_nr)
             );"""
-            with duckdb.connect(self.db_name) as conn:
-                conn.sql(create_table_query)
+            self.conn.sql(create_table_query)
 
     def record(
         self,
@@ -105,9 +104,11 @@ class DataRecorder:
             start_time,
             end_time,
         )
-        with duckdb.connect(self.db_name) as conn:
-            conn.execute(insert_query, record)
 
+        self.conn.execute(insert_query, record)
+
+    def close(self):
+        self.conn.close()
 
 # Example
 if __name__ == "__main__":

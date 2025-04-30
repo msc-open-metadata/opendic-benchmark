@@ -9,6 +9,7 @@ import os
 import random
 import sqlite3
 import sys
+from typing import Callable
 
 import duckdb
 import psycopg2
@@ -72,30 +73,79 @@ def connect_opendict(
     )
 
 
+def connect_standard_database(
+    database_system: DatabaseSystem,
+) -> (
+    sqlite3.Connection
+    | duckdb.DuckDBPyConnection
+    | psycopg2.extensions.connection
+    | snowflake.connector.connection.SnowflakeConnection
+):
+    """Connect to the specified database system and return the connection object"""
+    if database_system == DatabaseSystem.SQLITE:
+        return connect_sqlite()
+    elif database_system == DatabaseSystem.DUCKDB:
+        return connect_duckdb()
+    elif database_system == DatabaseSystem.POSTGRES:
+        return connect_postgres()
+    elif database_system == DatabaseSystem.SNOWFLAKE:
+        return connect_snowflake()
+    else:
+        raise ValueError(f"Unknown database system: {database_system}")
+
+
+def close_database(
+    database_system: DatabaseSystem,
+    conn: (
+        sqlite3.Connection
+        | duckdb.DuckDBPyConnection
+        | psycopg2.extensions.connection
+        | snowflake.connector.connection.SnowflakeConnection
+        | OpenDicSnowflakeCatalog
+    ),
+) -> None:
+    """Close the connection to the specified database system"""
+    if database_system == DatabaseSystem.SQLITE and isinstance(conn, sqlite3.Connection):
+        conn.close()
+    elif database_system == DatabaseSystem.DUCKDB and isinstance(conn, duckdb.DuckDBPyConnection):
+        conn.close()
+    elif database_system == DatabaseSystem.POSTGRES and isinstance(conn, psycopg2.extensions.connection):
+        conn.close()
+    elif database_system == DatabaseSystem.SNOWFLAKE and isinstance(conn, snowflake.connector.connection.SnowflakeConnection):
+        conn.close()
+    elif database_system == DatabaseSystem.OPENDIC_POLARIS and isinstance(conn, OpenDicSnowflakeCatalog):
+        # HTTP/REST only. Nothing to close.
+        pass
+    else:
+        raise ValueError(f"Unknown database system: {database_system}")
+
+
 def _execute_timed_query(
-    database_system: DatabaseSystem, query: str
+    conn: sqlite3.Connection
+    | duckdb.DuckDBPyConnection
+    | psycopg2.extensions.connection
+    | snowflake.connector.connection.SnowflakeConnection
+    | OpenDicSnowflakeCatalog,
+    database_system: DatabaseSystem,
+    query: str,
 ) -> tuple[datetime.datetime, datetime.datetime, datetime.timedelta]:
     """Execute query and log the query time"""
     _current_task_loading(query=query)
 
     start_time = datetime.datetime.now()
 
-    if database_system == DatabaseSystem.SQLITE:
-        with connect_sqlite() as sqlite_conn:
-            sqlite_conn.execute(query)
-            sqlite_conn.commit()
-    elif database_system == DatabaseSystem.DUCKDB:
-        with connect_duckdb() as duck_conn:
-            duck_conn.execute(query)
-    elif database_system == DatabaseSystem.POSTGRES:
-        with connect_postgres() as pg_conn:
-            with pg_conn.cursor() as pg_curs:
-                pg_curs.execute(query)
-    elif database_system == DatabaseSystem.SNOWFLAKE:
-        with connect_snowflake() as snowflake_conn:
-            with snowflake_conn.cursor() as snowflake_curr:
-                snowflake_curr.execute(query)
-    elif database_system == DatabaseSystem.OPENDIC_POLARIS:
+    if database_system == DatabaseSystem.SQLITE and isinstance(conn, sqlite3.Connection):
+        conn.execute(query)
+        conn.commit()
+    elif database_system == DatabaseSystem.DUCKDB and isinstance(conn, duckdb.DuckDBPyConnection):
+        conn.execute(query)
+    elif database_system == DatabaseSystem.POSTGRES and isinstance(conn, psycopg2.extensions.connection):
+        with conn.cursor() as pg_curs:
+            pg_curs.execute(query)
+    elif database_system == DatabaseSystem.SNOWFLAKE and isinstance(conn, snowflake.connector.connection.SnowflakeConnection):
+        with conn.cursor() as snowflake_curr:
+            snowflake_curr.execute(query)
+    elif database_system == DatabaseSystem.OPENDIC_POLARIS and isinstance(conn, OpenDicSnowflakeCatalog):
         opendic_conn: OpenDicSnowflakeCatalog = connect_opendict()
         opendic_conn.sql(query)
 
@@ -111,6 +161,11 @@ def _current_task_loading(query: str):
 
 
 def create_tables(
+    conn: sqlite3.Connection
+    | duckdb.DuckDBPyConnection
+    | psycopg2.extensions.connection
+    | snowflake.connector.connection.SnowflakeConnection
+    | OpenDicSnowflakeCatalog,
     database_system: DatabaseSystem,
     num_objects: Granularity,
     logging=True,
@@ -119,19 +174,84 @@ def create_tables(
     print()
 
     if database_system == DatabaseSystem.DUCKDB:
-        init_query = """CREATE SCHEMA experiment;
+        init_query = """CREATE schema experiment;
                         use experiment;"""
-        _ = _execute_timed_query(query=init_query, database_system=database_system)
-    if database_system == DatabaseSystem.SNOWFLAKE:
+        _ = _execute_timed_query(conn, query=init_query, database_system=database_system)
+    elif database_system == DatabaseSystem.SNOWFLAKE:
         with connect_snowflake() as conn:
             with conn.cursor() as curs:
                 curs.execute("CREATE or replace SCHEMA metadata_experiment")
                 curs.execute("use schema metadata_experiment;")
 
-    for i in range(num_objects.value):
-        query = f"CREATE TABLE t_{i} (id INTEGER PRIMARY KEY, value TEXT);"
+    elif database_system == DatabaseSystem.OPENDIC_POLARIS:
+        init_query: str = f"""
+        DEFINE OPEN table
+        PROPS {"name": "string",
+            "database_name": "string",
+            "schema_name": "string",
+            "kind": "string",
+            "columns" : "map",
+            "comment": "string",
+            "cluster_by": "string",
+            "rows": "int",
+            "bytes": "int",
+            "owner": "string",
+            "retention_time": "string",
+            "automatic_clustering": "string",
+            "change_tracking": "string",
+            "search_optimization": "string",
+            "search_optimization_progress": "int",
+            "search_optimization_bytes":"int",
+            "is_external": "string",
+            "enable_schema_evolution": "string",
+            "owner_role_type": "string",
+            "is_event": "string",
+            "budget": "string",
+            "is_hybrid": "string",
+            "is_iceberg": "string",
+            "is_dynamic": "string",
+            "is_immutable": "string"
+        }
+        """
+        _ = _execute_timed_query(conn=conn, query=init_query, database_system=database_system)
 
-        start_time, end_time, query_time = _execute_timed_query(query=query, database_system=database_system)
+    for i in range(num_objects.value):
+        if database_system == DatabaseSystem.OPENDIC_POLARIS:
+            # discussion: Create table query from snowflake show tables + snowflake describe table
+            # primary key information would best be put in the columns map. Requires support for nested lists/maps so we can represent all columns individually.
+            query: str = f"""
+            CREATE OPEN table t_0
+            PROPS {"name": "t_{i}",
+              "database_name": "BEETLE_DB",
+              "schema_name": "PUBLIC",
+              "kind": "TABLE",
+              "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT"},
+              "comment": "",
+              "cluster_by": "",
+              "rows": 0,
+              "bytes": 0,
+              "owner": "TRAINING_ROLE",
+              "retention_time": "1",
+              "automatic_clustering": "OFF",
+              "change_tracking": "OFF",
+              "search_optimization": "OFF",
+              "search_optimization_progress": 0,
+              "search_optimization_bytes": 0,
+              "is_external": "N",
+              "enable_schema_evolution": "N",
+              "owner_role_type": "ROLE",
+              "is_event": "N",
+              "budget": "",
+              "is_hybrid": "N",
+              "is_iceberg": "N",
+              "is_dynamic": "N",
+              "is_immutable": "N"
+            }
+            """
+        else:
+            query = f"CREATE TABLE t_{i} (id INTEGER PRIMARY KEY, value TEXT);"
+
+        start_time, end_time, query_time = _execute_timed_query(conn=conn, query=query, database_system=database_system)
         if logging:
             record = (
                 database_system,
@@ -148,16 +268,58 @@ def create_tables(
     print()
 
 
-def alter_tables(database_system: DatabaseSystem, granularity: Granularity, num_exp):
+def alter_tables(
+    conn: sqlite3.Connection
+    | duckdb.DuckDBPyConnection
+    | psycopg2.extensions.connection
+    | snowflake.connector.connection.SnowflakeConnection
+    | OpenDicSnowflakeCatalog,
+    database_system: DatabaseSystem,
+    granularity: Granularity,
+    num_exp,
+):
     """Example: alter table t_0 add column a. Point query"""
     print()
     table_num = random.randint(0, granularity.value - 1)  # In case of prefetching
-    query = f"ALTER TABLE t_{table_num} ADD COLUMN altered_{num_exp} TEXT;"
-    start_time, end_time, query_time = _execute_timed_query(query=query, database_system=database_system)
+    if database_system == DatabaseSystem.OPENDIC_POLARIS:
+        alter_query = f"""
+        ALTER OPEN table t_{table_num}
+        PROPS {"name": "t_{table_num}",
+          "database_name": "BEETLE_DB",
+          "schema_name": "PUBLIC",
+          "kind": "TABLE",
+          "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT", "altered_{num_exp} TEXT},
+          "comment": "",
+          "cluster_by": "",
+          "rows": 0,
+          "bytes": 0,
+          "owner": "TRAINING_ROLE",
+          "retention_time": "1",
+          "automatic_clustering": "OFF",
+          "change_tracking": "OFF",
+          "search_optimization": "OFF",
+          "search_optimization_progress": 0,
+          "search_optimization_bytes": 0,
+          "is_external": "N",
+          "enable_schema_evolution": "N",
+          "owner_role_type": "ROLE",
+          "is_event": "N",
+          "budget": "",
+          "is_hybrid": "N",
+          "is_iceberg": "N",
+          "is_dynamic": "N",
+          "is_immutable": "N"
+        }
+        """
+
+    else:
+        alter_query = f"ALTER TABLE t_{table_num} ADD COLUMN altered_{num_exp} TEXT;"
+
+    start_time, end_time, query_time = _execute_timed_query(conn=conn, query=alter_query, database_system=database_system)
     record = (
         database_system,
         DDLCommand.ALTER,
-        query,
+        alter_query,
         DatabaseObject.TABLE,
         granularity,
         num_exp,
@@ -168,6 +330,7 @@ def alter_tables(database_system: DatabaseSystem, granularity: Granularity, num_
     recorder.record(*record)
     print()
     _comment_object(
+        conn,
         database_system=database_system,
         database_object=DatabaseObject.TABLE,
         granularity=granularity,
@@ -177,6 +340,11 @@ def alter_tables(database_system: DatabaseSystem, granularity: Granularity, num_
 
 
 def _comment_object(
+    conn: sqlite3.Connection
+    | duckdb.DuckDBPyConnection
+    | psycopg2.extensions.connection
+    | snowflake.connector.connection.SnowflakeConnection
+    | OpenDicSnowflakeCatalog,
     database_system: DatabaseSystem,
     database_object: DatabaseObject,
     granularity: Granularity,
@@ -188,16 +356,47 @@ def _comment_object(
     object_num = random.randint(0, granularity.value - 1)
     if database_system == DatabaseSystem.SQLITE and database_object.value == "table":
         # ALTER column name
-        query = f"alter {database_object.value} t_{object_num} RENAME COLUMN value TO value_altered;"
-    else:
-        query = f"comment on {database_object.value} t_{object_num} is 'This {database_object.value} has been altered';"
+        comment_query = f"alter {database_object.value} t_{object_num} RENAME COLUMN value TO value_altered;"
 
-    _current_task_loading(query)
-    start_time, end_time, query_time = _execute_timed_query(query=query, database_system=database_system)
+    elif database_system == DatabaseSystem.OPENDIC_POLARIS:
+        comment_query = f"""
+        ALTER OPEN table t_{object_num}
+        PROPS {"name": "t_{object_num}",
+          "database_name": "BEETLE_DB",
+          "schema_name": "PUBLIC",
+          "kind": "TABLE",
+          "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT", "altered_{num_exp} TEXT},
+          "comment": "This {database_object.value} has been altered",
+          "cluster_by": "",
+          "rows": 0,
+          "bytes": 0,
+          "owner": "TRAINING_ROLE",
+          "retention_time": "1",
+          "automatic_clustering": "OFF",
+          "change_tracking": "OFF",
+          "search_optimization": "OFF",
+          "search_optimization_progress": 0,
+          "search_optimization_bytes": 0,
+          "is_external": "N",
+          "enable_schema_evolution": "N",
+          "owner_role_type": "ROLE",
+          "is_event": "N",
+          "budget": "",
+          "is_hybrid": "N",
+          "is_iceberg": "N",
+          "is_dynamic": "N",
+          "is_immutable": "N"
+        }
+        """
+    else:
+        comment_query = f"comment on {database_object.value} t_{object_num} is 'This {database_object.value} has been altered';"
+
+    _current_task_loading(comment_query)
+    start_time, end_time, query_time = _execute_timed_query(conn=conn, query=comment_query, database_system=database_system)
     record = (
         database_system,
         DDLCommand.COMMENT,
-        query,
+        comment_query,
         database_object,
         granularity,
         num_exp,
@@ -216,6 +415,11 @@ def _comment_object(
 
 
 def show_objects(
+    conn: sqlite3.Connection
+    | duckdb.DuckDBPyConnection
+    | psycopg2.extensions.connection
+    | snowflake.connector.connection.SnowflakeConnection
+    | OpenDicSnowflakeCatalog,
     database_system: DatabaseSystem,
     database_object: DatabaseObject,
     granularity: Granularity,
@@ -239,7 +443,7 @@ def show_objects(
         query = f"show open {database_object.value}"
     else:
         query = "show tables"
-    start_time, end_time, query_time = _execute_timed_query(query=query, database_system=database_system)
+    start_time, end_time, query_time = _execute_timed_query(conn=conn, query=query, database_system=database_system)
     record = (
         database_system,
         DDLCommand.SHOW,
@@ -255,7 +459,15 @@ def show_objects(
     print()
 
 
-def drop_schema(database_system: DatabaseSystem, database_object: DatabaseObject = DatabaseObject.TABLE):
+def drop_schema(
+    conn: sqlite3.Connection
+    | duckdb.DuckDBPyConnection
+    | psycopg2.extensions.connection
+    | snowflake.connector.connection.SnowflakeConnection
+    | OpenDicSnowflakeCatalog,
+    database_system: DatabaseSystem,
+    database_object: DatabaseObject = DatabaseObject.TABLE,
+):
     """Example: drop schema/db"""
     # switch case:
     drop_query: str = "None"
@@ -263,7 +475,6 @@ def drop_schema(database_system: DatabaseSystem, database_object: DatabaseObject
         if database_system == DatabaseSystem.SQLITE:
             if os.path.exists("sqlite.db"):
                 os.remove("sqlite.db")
-                logging.info(f"Dropped: {database_system}")
         if database_system == DatabaseSystem.DUCKDB:
             drop_query = "DROP SCHEMA experiment CASCADE;"
         if database_system == DatabaseSystem.POSTGRES:
@@ -279,39 +490,74 @@ def drop_schema(database_system: DatabaseSystem, database_object: DatabaseObject
         else:
             logging.error("Database system not dropped")
 
+        logging.info(f"Dropped: {database_system}")
         if drop_query == "None":
             logging.info("No drop query provided")
         else:
-            _ = _execute_timed_query(query=drop_query, database_system=database_system)
+            _ = _execute_timed_query(conn=conn, query=drop_query, database_system=database_system)
     except Exception as e:
         logging.error(f"Drop schema failed: {e}")
 
 
-def experiment_1(database_system: DatabaseSystem):
+def experiment_standard(database_system: DatabaseSystem):
     try:
         logging.info("Starting experiment 1!")
 
         for gran in Granularity:
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
+            with connect_standard_database(database_system=database_system) as conn:
+                logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
+                create_tables(conn=conn, database_system=database_system, num_objects=gran)
+                for num_exp in range(3):
+                    alter_tables(
+                        conn=conn,
+                        database_system=database_system,
+                        granularity=gran,
+                        num_exp=num_exp,
+                    )
+                    show_objects(
+                        conn=conn,
+                        database_system=database_system,
+                        database_object=DatabaseObject.TABLE,
+                        granularity=gran,
+                        num_exp=num_exp,
+                    )
+                logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: SUCCESSFUL")
+                drop_schema(conn=conn, database_system=database_system)
+                close_database(database_system, conn)
+    except Exception as e:
+        logging.error(f"Experiment 1 failed: {e}")
+    finally:
+        logging.info("Experiment 1 finished.")
 
-            create_tables(database_system=database_system, num_objects=gran)
+
+def experiment_opendic(database_system: DatabaseSystem = DatabaseSystem.OPENDIC_POLARIS):
+    try:
+        logging.info("Starting experiment 1!")
+
+        for gran in Granularity:
+            logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
+            conn = connect_opendict()
+            logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
+            create_tables(conn=conn, database_system=database_system, num_objects=gran)
             for num_exp in range(3):
                 alter_tables(
+                    conn=conn,
                     database_system=database_system,
                     granularity=gran,
                     num_exp=num_exp,
                 )
                 show_objects(
+                    conn=conn,
                     database_system=database_system,
                     database_object=DatabaseObject.TABLE,
                     granularity=gran,
                     num_exp=num_exp,
                 )
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: SUCCESSFUL")
-            drop_schema(database_system)
+            drop_schema(conn=conn, database_system=database_system)
     except Exception as e:
         logging.error(f"Experiment 1 failed: {e}")
-        # drop_schema(conn, database_system)
     finally:
         logging.info("Experiment 1 finished.")
 
@@ -326,6 +572,12 @@ def main():
         choices=["sqlite", "duckdb", "postgres", "snowflake", "opendic_polaris"],
         help="Database system to test",
     )
+    parser.add_argument(
+        "--exp",
+        type=str,
+        required=True,
+        help="Which experiment to run",
+    )
 
     args = parser.parse_args()
 
@@ -338,20 +590,31 @@ def main():
         "opendic_polaris": DatabaseSystem.OPENDIC_POLARIS,
     }
 
-    database_system: DatabaseSystem = db_system_map[args.db]
+    exp_map: dict[str, Callable[[DatabaseSystem], None]] = {
+        "standard": experiment_standard,
+        "opendic": experiment_opendic,
+    }
 
+    database_system: DatabaseSystem = db_system_map[args.db]
+    experiment_function = exp_map[args.exp]
+    if database_system == DatabaseSystem.OPENDIC_POLARIS:
+        conn = connect_opendict()
+    else:
+        conn = connect_standard_database(database_system)
     try:
         # Clean up any existing schemas first
-        drop_schema(database_system)
+        drop_schema(conn=conn, database_system=database_system)
 
         # Run the experiment with the selected database
-        experiment_1(database_system)
+        experiment_function(database_system)
 
         logging.info("Done!")
 
     except Exception as e:
         logging.error(f"Error in main execution: {e}")
-
+    finally:
+        close_database(database_system, conn)
+        recorder.close()
 
 if __name__ == "__main__":
     main()
