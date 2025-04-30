@@ -15,7 +15,9 @@ class DatabaseSystem(Enum):
     POSTGRES = "postgres"
     DUCKDB = "duckDB"
     SNOWFLAKE = "snowflake"
-    OPENDIC_POLARIS = "opendictpolaris"
+    OPENDIC_POLARIS_FILE = "opendict_polaris_file"
+    OPENDIC_POLARIS_FILE_CACHED = "opendict_polaris_file_cache"
+    OPENDIC_POLARIS_AZURE = "opendict_polaris_cloud_azure"
 
 
 class DatabaseObject(Enum):

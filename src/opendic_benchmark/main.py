@@ -9,7 +9,6 @@ import os
 import random
 import sqlite3
 import sys
-from typing import Callable
 
 import duckdb
 import psycopg2
@@ -29,7 +28,11 @@ from opendic_benchmark.experiment_logger.data_recorder import (
 # Configure logging
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-recorder = DataRecorder()
+OPENDIC_EXPS = {
+    DatabaseSystem.OPENDIC_POLARIS_AZURE,
+    DatabaseSystem.OPENDIC_POLARIS_FILE,
+    DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED,
+}
 
 
 def read_secret(secret_name: str, secrets_path: str = "/run/secrets/") -> str:
@@ -113,7 +116,7 @@ def close_database(
         conn.close()
     elif database_system == DatabaseSystem.SNOWFLAKE and isinstance(conn, snowflake.connector.connection.SnowflakeConnection):
         conn.close()
-    elif database_system == DatabaseSystem.OPENDIC_POLARIS and isinstance(conn, OpenDicSnowflakeCatalog):
+    elif database_system in OPENDIC_EXPS and isinstance(conn, OpenDicSnowflakeCatalog):
         # HTTP/REST only. Nothing to close.
         pass
     else:
@@ -145,7 +148,7 @@ def _execute_timed_query(
     elif database_system == DatabaseSystem.SNOWFLAKE and isinstance(conn, snowflake.connector.connection.SnowflakeConnection):
         with conn.cursor() as snowflake_curr:
             snowflake_curr.execute(query)
-    elif database_system == DatabaseSystem.OPENDIC_POLARIS and isinstance(conn, OpenDicSnowflakeCatalog):
+    elif database_system in OPENDIC_EXPS and isinstance(conn, OpenDicSnowflakeCatalog):
         opendic_conn: OpenDicSnowflakeCatalog = connect_opendict()
         opendic_conn.sql(query)
 
@@ -168,6 +171,7 @@ def create_tables(
     | OpenDicSnowflakeCatalog,
     database_system: DatabaseSystem,
     num_objects: Granularity,
+    recorder: DataRecorder,
     logging=True,
 ):
     """Example: Create 1000 tables"""
@@ -183,7 +187,7 @@ def create_tables(
                 curs.execute("CREATE or replace SCHEMA metadata_experiment")
                 curs.execute("use schema metadata_experiment;")
 
-    elif database_system == DatabaseSystem.OPENDIC_POLARIS:
+    elif database_system in OPENDIC_EXPS:
         init_query: str = f"""
         DEFINE OPEN table
         PROPS {"name": "string",
@@ -216,7 +220,7 @@ def create_tables(
         _ = _execute_timed_query(conn=conn, query=init_query, database_system=database_system)
 
     for i in range(num_objects.value):
-        if database_system == DatabaseSystem.OPENDIC_POLARIS:
+        if database_system in OPENDIC_EXPS:
             # discussion: Create table query from snowflake show tables + snowflake describe table
             # primary key information would best be put in the columns map. Requires support for nested lists/maps so we can represent all columns individually.
             query: str = f"""
@@ -276,12 +280,13 @@ def alter_tables(
     | OpenDicSnowflakeCatalog,
     database_system: DatabaseSystem,
     granularity: Granularity,
+    recorder: DataRecorder,
     num_exp,
 ):
     """Example: alter table t_0 add column a. Point query"""
     print()
     table_num = random.randint(0, granularity.value - 1)  # In case of prefetching
-    if database_system == DatabaseSystem.OPENDIC_POLARIS:
+    if database_system in OPENDIC_EXPS:
         alter_query = f"""
         ALTER OPEN table t_{table_num}
         PROPS {"name": "t_{table_num}",
@@ -334,6 +339,7 @@ def alter_tables(
         database_system=database_system,
         database_object=DatabaseObject.TABLE,
         granularity=granularity,
+        recorder=recorder,
         num_exp=num_exp,
     )
     print()
@@ -348,6 +354,7 @@ def _comment_object(
     database_system: DatabaseSystem,
     database_object: DatabaseObject,
     granularity: Granularity,
+    recorder: DataRecorder,
     num_exp: int,
 ):
     """Example if comment supported: alter table t1 set comment = 'This table has been altered'\n
@@ -358,7 +365,7 @@ def _comment_object(
         # ALTER column name
         comment_query = f"alter {database_object.value} t_{object_num} RENAME COLUMN value TO value_altered;"
 
-    elif database_system == DatabaseSystem.OPENDIC_POLARIS:
+    elif database_system in OPENDIC_EXPS:
         comment_query = f"""
         ALTER OPEN table t_{object_num}
         PROPS {"name": "t_{object_num}",
@@ -423,6 +430,7 @@ def show_objects(
     database_system: DatabaseSystem,
     database_object: DatabaseObject,
     granularity: Granularity,
+    recorder: DataRecorder,
     num_exp,
 ):
     """Example: show tables"""
@@ -439,7 +447,7 @@ def show_objects(
         """
     elif database_system == DatabaseSystem.SNOWFLAKE:
         query = "show tables limit 10000"
-    elif database_system == DatabaseSystem.OPENDIC_POLARIS:
+    elif database_system in OPENDIC_EXPS:
         query = f"show open {database_object.value}"
     else:
         query = "show tables"
@@ -485,7 +493,7 @@ def drop_schema(
             use schema public;
             DROP SCHEMA if exists metadata_experiment CASCADE;
             """
-        if database_system == DatabaseSystem.OPENDIC_POLARIS:
+        if database_system in OPENDIC_EXPS:
             drop_query = f"DROP OPEN {database_object.value}"
         else:
             logging.error("Database system not dropped")
@@ -499,7 +507,7 @@ def drop_schema(
         logging.error(f"Drop schema failed: {e}")
 
 
-def experiment_standard(database_system: DatabaseSystem):
+def experiment_standard(recorder: DataRecorder, database_system: DatabaseSystem):
     try:
         logging.info("Starting experiment 1!")
 
@@ -507,20 +515,16 @@ def experiment_standard(database_system: DatabaseSystem):
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
             with connect_standard_database(database_system=database_system) as conn:
                 logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
-                create_tables(conn=conn, database_system=database_system, num_objects=gran)
+                create_tables(conn=conn, database_system=database_system, num_objects=gran, recorder=recorder)
                 for num_exp in range(3):
-                    alter_tables(
-                        conn=conn,
-                        database_system=database_system,
-                        granularity=gran,
-                        num_exp=num_exp,
-                    )
+                    alter_tables(conn=conn, database_system=database_system, granularity=gran, num_exp=num_exp, recorder=recorder)
                     show_objects(
                         conn=conn,
                         database_system=database_system,
                         database_object=DatabaseObject.TABLE,
                         granularity=gran,
                         num_exp=num_exp,
+                        recorder=recorder,
                     )
                 logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: SUCCESSFUL")
                 drop_schema(conn=conn, database_system=database_system)
@@ -531,7 +535,7 @@ def experiment_standard(database_system: DatabaseSystem):
         logging.info("Experiment 1 finished.")
 
 
-def experiment_opendic(database_system: DatabaseSystem = DatabaseSystem.OPENDIC_POLARIS):
+def experiment_opendic(recorder: DataRecorder, database_system: DatabaseSystem):
     try:
         logging.info("Starting experiment 1!")
 
@@ -539,12 +543,13 @@ def experiment_opendic(database_system: DatabaseSystem = DatabaseSystem.OPENDIC_
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
             conn = connect_opendict()
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
-            create_tables(conn=conn, database_system=database_system, num_objects=gran)
+            create_tables(conn=conn, database_system=database_system, num_objects=gran, recorder=recorder)
             for num_exp in range(3):
                 alter_tables(
                     conn=conn,
                     database_system=database_system,
                     granularity=gran,
+                    recorder=recorder,
                     num_exp=num_exp,
                 )
                 show_objects(
@@ -552,6 +557,7 @@ def experiment_opendic(database_system: DatabaseSystem = DatabaseSystem.OPENDIC_
                     database_system=database_system,
                     database_object=DatabaseObject.TABLE,
                     granularity=gran,
+                    recorder=recorder,
                     num_exp=num_exp,
                 )
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: SUCCESSFUL")
@@ -569,13 +575,14 @@ def main():
         "--db",
         type=str,
         required=True,
-        choices=["sqlite", "duckdb", "postgres", "snowflake", "opendic_polaris"],
+        choices=["sqlite", "duckdb", "postgres", "snowflake", "opendic_file", "opendic_file_cached", "opendic_cloud_azure"],
         help="Database system to test",
     )
     parser.add_argument(
         "--exp",
         type=str,
         required=True,
+        choices=["standard", "opendic"],
         help="Which experiment to run",
     )
 
@@ -587,26 +594,30 @@ def main():
         "duckdb": DatabaseSystem.DUCKDB,
         "postgres": DatabaseSystem.POSTGRES,
         "snowflake": DatabaseSystem.SNOWFLAKE,
-        "opendic_polaris": DatabaseSystem.OPENDIC_POLARIS,
-    }
-
-    exp_map: dict[str, Callable[[DatabaseSystem], None]] = {
-        "standard": experiment_standard,
-        "opendic": experiment_opendic,
+        "opendic_file": DatabaseSystem.OPENDIC_POLARIS_FILE,
+        "opendic_file_cached": DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED,
+        "opendic_cloud_azure": DatabaseSystem.OPENDIC_POLARIS_AZURE,
     }
 
     database_system: DatabaseSystem = db_system_map[args.db]
-    experiment_function = exp_map[args.exp]
-    if database_system == DatabaseSystem.OPENDIC_POLARIS:
+
+    # Create recorder before experiment
+    if database_system in OPENDIC_EXPS:
         conn = connect_opendict()
+        recorder = DataRecorder(db_name="opendic_benchmark_logs.db")
     else:
         conn = connect_standard_database(database_system)
+        recorder = DataRecorder(db_name="experiment_logs.db")
+
     try:
         # Clean up any existing schemas first
         drop_schema(conn=conn, database_system=database_system)
 
-        # Run the experiment with the selected database
-        experiment_function(database_system)
+        # Run the correct experiment based on the database system and args
+        if args.exp == "standard":
+            experiment_standard(recorder=recorder, database_system=database_system)
+        elif args.exp == "opendic":
+            experiment_opendic(recorder=recorder, database_system=database_system)
 
         logging.info("Done!")
 
@@ -615,6 +626,7 @@ def main():
     finally:
         close_database(database_system, conn)
         recorder.close()
+
 
 if __name__ == "__main__":
     main()
