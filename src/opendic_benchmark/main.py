@@ -13,7 +13,7 @@ import sys
 import duckdb
 import psycopg2
 import snowflake.connector
-import yaml
+import toml
 from snowflake_opendic.catalog import OpenDicSnowflakeCatalog
 from snowflake_opendic.snow_opendic import snowflake_connect
 
@@ -51,20 +51,25 @@ def connect_duckdb() -> duckdb.DuckDBPyConnection:
     return duckdb.connect("duckdb.db")
 
 
-def connect_postgres() -> psycopg2.extensions.connection:
-    postgres_conf = yaml.safe_load(open(".config.yaml"))["postgres_conf"]
-    return psycopg2.connect(**postgres_conf)
+def connect_postgres(config_path: str = "secrets/postgres-conf.toml") -> psycopg2.extensions.connection:
+    with open(config_path, "r") as f:
+        postgres_conf = toml.load(f)
+
+    return psycopg2.connect(**postgres_conf["postgres_conf"])
 
 
 def connect_snowflake() -> snowflake.connector.connection.SnowflakeConnection:
-    snowflake_conf = yaml.safe_load(open(".config.yaml"))["snowflake_conf"]
-    return snowflake.connector.connect(**snowflake_conf)
+    with open("secrets/snowflake-conf.toml", "r") as f:
+        snowflake_conf = toml.load(f)
+
+    return snowflake.connector.connect(**snowflake_conf["snowflake_conf"])
 
 
 def connect_opendict(
-    principal_secrets_path: str = "../polaris-boot/secrets", openidic_api_url: str = "http://localhost:8181/api"
+    principal_secrets_path: str = "../polaris-boot/secrets",
+    openidic_api_url: str = "http://localhost:8181/api",
+    config_path: str = "secrets/snowflake-conf.toml",
 ) -> OpenDicSnowflakeCatalog:
-    config_path = "secrets/snowflake-conf.toml"
     snowflake_conn = snowflake_connect(config_path=config_path)
     engineer_client_id = read_secret(secrets_path="../polaris-boot/secrets", secret_name="engineer-client-id")
     engineer_client_secret = read_secret(secrets_path="../polaris-boot/secrets", secret_name="engineer-client-secret")
@@ -143,8 +148,9 @@ def _execute_timed_query(
     elif database_system == DatabaseSystem.DUCKDB and isinstance(conn, duckdb.DuckDBPyConnection):
         conn.execute(query)
     elif database_system == DatabaseSystem.POSTGRES and isinstance(conn, psycopg2.extensions.connection):
-        with conn.cursor() as pg_curs:
-            pg_curs.execute(query)
+        with conn.cursor() as postgres_curr:
+            postgres_curr.execute(query)
+            conn.commit()
     elif database_system == DatabaseSystem.SNOWFLAKE and isinstance(conn, snowflake.connector.connection.SnowflakeConnection):
         with conn.cursor() as snowflake_curr:
             snowflake_curr.execute(query)
@@ -483,6 +489,9 @@ def drop_schema(
         if database_system == DatabaseSystem.SQLITE:
             if os.path.exists("sqlite.db"):
                 os.remove("sqlite.db")
+            else:
+                logging.info("No database file found")
+
         if database_system == DatabaseSystem.DUCKDB:
             drop_query = "DROP SCHEMA experiment CASCADE;"
         if database_system == DatabaseSystem.POSTGRES:
@@ -495,8 +504,6 @@ def drop_schema(
             """
         if database_system in OPENDIC_EXPS:
             drop_query = f"DROP OPEN {database_object.value}"
-        else:
-            logging.error("Database system not dropped")
 
         logging.info(f"Dropped: {database_system}")
         if drop_query == "None":
@@ -528,7 +535,6 @@ def experiment_standard(recorder: DataRecorder, database_system: DatabaseSystem)
                     )
                 logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: SUCCESSFUL")
                 drop_schema(conn=conn, database_system=database_system)
-                close_database(database_system, conn)
     except Exception as e:
         logging.error(f"Experiment 1 failed: {e}")
     finally:

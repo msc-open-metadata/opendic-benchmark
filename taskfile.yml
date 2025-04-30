@@ -8,10 +8,18 @@ tasks:
       - uv run pre-commit install --hook-type commit-msg
 
   run:pg-container:
-    desc: Run the postgres benchmark
+    desc: Run the Postgres benchmark
     cmds:
-    - docker pull postgres
-    - docker run --name postgres-container -e POSTGRES_USER=user -e POSTGRES_PASSWORD=research-project -e POSTGRES_DB=postgres -p 5432:5432 -d postgres
-    - docker exec -it d267 psql -U user -d postgres -c "SHOW max_locks_per_transaction;"
-    - docker exec -it d267 psql -U user -d postgres -c "ALTER SYSTEM SET max_locks_per_transaction = 8192;"
-    - docker restart postgres_container
+      - docker pull postgres
+      - docker run --name postgres-container -e POSTGRES_USER=user -e POSTGRES_PASSWORD=benchmark -e POSTGRES_DB=postgres -p 5432:5432 -d postgres
+      - |
+        echo "Waiting for Postgres to be ready…"
+        until docker exec postgres-container \
+              psql -U user -d postgres -c '\q' >/dev/null 2>&1; do
+          printf '.'
+          sleep 1
+        done
+        echo " Postgres is up!"
+      - docker exec postgres-container psql -U user -d postgres -c "SHOW max_locks_per_transaction;"
+      - docker exec postgres-container psql -U user -d postgres -c "ALTER SYSTEM SET max_locks_per_transaction = 8192;"
+      - docker restart postgres-container
