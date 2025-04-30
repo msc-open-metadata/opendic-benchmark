@@ -35,7 +35,7 @@ OPENDIC_EXPS = {
 }
 
 
-def read_secret(secret_name: str, secrets_path: str = "/run/secrets/") -> str:
+def read_secret(secret_name: str, secrets_path: str = "/run/secrets") -> str:
     """Get `secret_name` from docker-compose secret store"""
     filepath = f"{secrets_path}/{secret_name}"
     with open(filepath, "r") as f:
@@ -62,12 +62,12 @@ def connect_snowflake() -> snowflake.connector.connection.SnowflakeConnection:
 
 
 def connect_opendict(
-    principal_secrets_path: str = "../polaris-boot/secrets/", openidic_api_url: str = "http://localhost:8181/api"
+    principal_secrets_path: str = "../polaris-boot/secrets", openidic_api_url: str = "http://localhost:8181/api"
 ) -> OpenDicSnowflakeCatalog:
     config_path = "secrets/snowflake-conf.toml"
     snowflake_conn = snowflake_connect(config_path=config_path)
-    engineer_client_id = read_secret("engineer_client_id", "../polaris-boot/secrets/")
-    engineer_client_secret = read_secret("engineer_client_secret")
+    engineer_client_id = read_secret(secrets_path="../polaris-boot/secrets", secret_name="engineer-client-id")
+    engineer_client_secret = read_secret(secrets_path="../polaris-boot/secrets", secret_name="engineer-client-secret")
     return OpenDicSnowflakeCatalog(
         snowflake_conn=snowflake_conn,
         api_url=openidic_api_url,
@@ -149,8 +149,7 @@ def _execute_timed_query(
         with conn.cursor() as snowflake_curr:
             snowflake_curr.execute(query)
     elif database_system in OPENDIC_EXPS and isinstance(conn, OpenDicSnowflakeCatalog):
-        opendic_conn: OpenDicSnowflakeCatalog = connect_opendict()
-        opendic_conn.sql(query)
+        conn.sql(query)
 
     end_time = datetime.datetime.now()
 
@@ -188,9 +187,10 @@ def create_tables(
                 curs.execute("use schema metadata_experiment;")
 
     elif database_system in OPENDIC_EXPS:
-        init_query: str = f"""
+        init_query: str = """
         DEFINE OPEN table
-        PROPS {"name": "string",
+        PROPS {
+            "name": "string",
             "database_name": "string",
             "schema_name": "string",
             "kind": "string",
@@ -224,12 +224,12 @@ def create_tables(
             # discussion: Create table query from snowflake show tables + snowflake describe table
             # primary key information would best be put in the columns map. Requires support for nested lists/maps so we can represent all columns individually.
             query: str = f"""
-            CREATE OPEN table t_0
-            PROPS {"name": "t_{i}",
+            CREATE OPEN table t_{i}
+            PROPS {{"name": "t_{i}",
               "database_name": "BEETLE_DB",
               "schema_name": "PUBLIC",
               "kind": "TABLE",
-              "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT"},
+              "columns": {{"key": "INTEGER PRIMARY KEY", "value": "TEXT"}},
               "comment": "",
               "cluster_by": "",
               "rows": 0,
@@ -250,7 +250,7 @@ def create_tables(
               "is_iceberg": "N",
               "is_dynamic": "N",
               "is_immutable": "N"
-            }
+            }}
             """
         else:
             query = f"CREATE TABLE t_{i} (id INTEGER PRIMARY KEY, value TEXT);"
@@ -262,7 +262,7 @@ def create_tables(
                 DDLCommand.CREATE,
                 f"CREATE TABLE t_{i} (id INTEGER PRIMARY KEY, value TEXT);",
                 DatabaseObject.TABLE,
-                num_objects,
+                i,
                 0,
                 query_time.total_seconds(),
                 start_time,
@@ -289,11 +289,11 @@ def alter_tables(
     if database_system in OPENDIC_EXPS:
         alter_query = f"""
         ALTER OPEN table t_{table_num}
-        PROPS {"name": "t_{table_num}",
+        PROPS {{"name": "t_{table_num}",
           "database_name": "BEETLE_DB",
           "schema_name": "PUBLIC",
           "kind": "TABLE",
-          "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT", "altered_{num_exp} TEXT},
+          "columns": {{"key": "INTEGER PRIMARY KEY", "value": "TEXT", "altered_{num_exp} TEXT}},
           "comment": "",
           "cluster_by": "",
           "rows": 0,
@@ -314,7 +314,7 @@ def alter_tables(
           "is_iceberg": "N",
           "is_dynamic": "N",
           "is_immutable": "N"
-        }
+        }}
         """
 
     else:
@@ -368,11 +368,11 @@ def _comment_object(
     elif database_system in OPENDIC_EXPS:
         comment_query = f"""
         ALTER OPEN table t_{object_num}
-        PROPS {"name": "t_{object_num}",
+        PROPS {{"name": "t_{object_num}",
           "database_name": "BEETLE_DB",
           "schema_name": "PUBLIC",
           "kind": "TABLE",
-          "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT", "altered_{num_exp} TEXT},
+          "columns": {{"key": "INTEGER PRIMARY KEY", "value": "TEXT", "altered_{num_exp} TEXT}},
           "comment": "This {database_object.value} has been altered",
           "cluster_by": "",
           "rows": 0,
@@ -393,7 +393,7 @@ def _comment_object(
           "is_iceberg": "N",
           "is_dynamic": "N",
           "is_immutable": "N"
-        }
+        }}
         """
     else:
         comment_query = f"comment on {database_object.value} t_{object_num} is 'This {database_object.value} has been altered';"

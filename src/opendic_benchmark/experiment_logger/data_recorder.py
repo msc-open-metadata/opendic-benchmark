@@ -63,7 +63,7 @@ class DataRecorder:
     def _initialize_tables(self):
         # Create a table for each system if it doesn't exist - no need to check if it exists when we record
         for system in DatabaseSystem:
-            table_name = f"{system.value}db_logs"  # So we get sqlite_experiment_logs, postgres_sqlite_experiment_logs_logs, etc.
+            table_name = f"{system.value}"  # So we get sqlite_experiment_logs, postgres_sqlite_experiment_logs_logs, etc.
             create_table_query = f"""CREATE TABLE IF NOT EXISTS {table_name}(
                 system_name VARCHAR,
                 ddl_command VARCHAR,
@@ -83,13 +83,13 @@ class DataRecorder:
         ddl_command: DDLCommand,
         query_text: str,
         target_object: DatabaseObject,
-        granularity: Granularity,
+        granularity: Granularity | int,
         repetition_nr: int,
         query_runtime: float,
         start_time: datetime,
         end_time: datetime,
     ):
-        table_name = f"{system.value}db_logs"  # Dyn table name based on system enum
+        table_name = f"{system.value}"  # Dyn table name based on system enum
         insert_query = f"""
             INSERT INTO {table_name}(system_name,ddl_command,query_text,target_object,granularity,repetition_nr,query_runtime,start_time,end_time)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
@@ -100,7 +100,7 @@ class DataRecorder:
             ddl_command.value,
             query_text,
             target_object.value,
-            granularity.value,
+            granularity.value if isinstance(granularity, Granularity) else granularity,
             repetition_nr,
             query_runtime,
             start_time,
