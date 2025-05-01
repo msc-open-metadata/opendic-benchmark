@@ -16,7 +16,9 @@ class DatabaseSystem(Enum):
     DUCKDB = "duckDB"
     SNOWFLAKE = "snowflake"
     OPENDIC_POLARIS_FILE = "opendict_polaris_file"
+    OPENDIC_POLARIS_FILE_BATCH = "opendict_polaris_file_batch"
     OPENDIC_POLARIS_FILE_CACHED = "opendict_polaris_file_cache"
+    OPENDIC_POLARIS_FILE_CACHED_BATCH = "opendict_polaris_file_cache_batch"
     OPENDIC_POLARIS_AZURE = "opendict_polaris_cloud_azure"
 
 

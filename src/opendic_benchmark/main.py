@@ -4,6 +4,7 @@ Main experiment file. Run experiment for all data systems (Sqlite, Postgresql, d
 
 import argparse
 import datetime
+import json
 import logging
 import os
 import random
@@ -14,7 +15,7 @@ import duckdb
 import psycopg2
 import snowflake.connector
 import toml
-from snowflake_opendic.catalog import OpenDicSnowflakeCatalog
+from snowflake_opendic.catalog import OpenDicSnowflakeCatalog, PrettyResponse
 from snowflake_opendic.snow_opendic import snowflake_connect
 
 from opendic_benchmark.experiment_logger.data_recorder import (
@@ -32,6 +33,8 @@ OPENDIC_EXPS = {
     DatabaseSystem.OPENDIC_POLARIS_AZURE,
     DatabaseSystem.OPENDIC_POLARIS_FILE,
     DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED,
+    DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED_BATCH,
+    DatabaseSystem.OPENDIC_POLARIS_FILE_BATCH,
 }
 
 
@@ -42,7 +45,6 @@ def read_secret(secret_name: str, secrets_path: str = "/run/secrets") -> str:
         return f.read().strip()  # Remove any trailing newline
 
 
-# Init connections
 def connect_sqlite() -> sqlite3.Connection:
     return sqlite3.connect("sqlite.db")
 
@@ -155,7 +157,9 @@ def _execute_timed_query(
         with conn.cursor() as snowflake_curr:
             snowflake_curr.execute(query)
     elif database_system in OPENDIC_EXPS and isinstance(conn, OpenDicSnowflakeCatalog):
-        conn.sql(query)
+        response = conn.sql(query)
+        if isinstance(response, PrettyResponse):  # Might be error
+            assert "error" not in response.data.keys(), f"Error in response: {response.data}"
 
     end_time = datetime.datetime.now()
 
@@ -266,7 +270,7 @@ def create_tables(
             record = (
                 database_system,
                 DDLCommand.CREATE,
-                f"CREATE TABLE t_{i} (id INTEGER PRIMARY KEY, value TEXT);",
+                query,
                 DatabaseObject.TABLE,
                 i,
                 0,
@@ -275,6 +279,104 @@ def create_tables(
                 end_time,
             )
             recorder.record(*record)
+    print()
+
+
+def create_tables_batch(
+    conn: OpenDicSnowflakeCatalog,
+    database_system: DatabaseSystem,
+    num_objects: Granularity,
+    recorder: DataRecorder,
+    logging=True,
+):
+    print()
+    assert DatabaseSystem in {DatabaseSystem.OPENDIC_POLARIS_FILE_BATCH, DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED_BATCH}
+
+    init_query: str = """
+    DEFINE OPEN table
+    PROPS {
+        "name": "string",
+        "database_name": "string",
+        "schema_name": "string",
+        "kind": "string",
+        "columns" : "map",
+        "comment": "string",
+        "cluster_by": "string",
+        "rows": "int",
+        "bytes": "int",
+        "owner": "string",
+        "retention_time": "string",
+        "automatic_clustering": "string",
+        "change_tracking": "string",
+        "search_optimization": "string",
+        "search_optimization_progress": "int",
+        "search_optimization_bytes":"int",
+        "is_external": "string",
+        "enable_schema_evolution": "string",
+        "owner_role_type": "string",
+        "is_event": "string",
+        "budget": "string",
+        "is_hybrid": "string",
+        "is_iceberg": "string",
+        "is_dynamic": "string",
+        "is_immutable": "string"
+    }
+    """
+    _ = _execute_timed_query(conn=conn, query=init_query, database_system=database_system)
+
+    # Create batch job
+    query_objs = [
+        {
+            "name": f"t_{i}",
+            "database_name": "BEETLE_DB",
+            "schema_name": "PUBLIC",
+            "kind": "TABLE",
+            "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT"},
+            "comment": "",
+            "cluster_by": "",
+            "rows": 0,
+            "bytes": 0,
+            "owner": "TRAINING_ROLE",
+            "retention_time": "1",
+            "automatic_clustering": "OFF",
+            "change_tracking": "OFF",
+            "search_optimization": "OFF",
+            "search_optimization_progress": 0,
+            "search_optimization_bytes": 0,
+            "is_external": "N",
+            "enable_schema_evolution": "N",
+            "owner_role_type": "ROLE",
+            "is_event": "N",
+            "budget": "",
+            "is_hybrid": "N",
+            "is_iceberg": "N",
+            "is_dynamic": "N",
+            "is_immutable": "N",
+        }
+        for i in range(num_objects.value)
+    ]
+
+    complete_query: str = f"""
+    CREATE OPEN BATCH table
+    PROPS {json.dumps(query_objs)}
+    """
+
+    print(complete_query)
+
+    start_time, end_time, query_time = _execute_timed_query(conn=conn, query=complete_query, database_system=database_system)
+    if logging:
+        record = (
+            database_system,
+            DDLCommand.CREATE,
+            "CREATE TABLE t_{i} (id INTEGER PRIMARY KEY, value TEXT);",
+            DatabaseObject.TABLE,
+            num_objects.value,
+            0,
+            query_time.total_seconds(),
+            start_time,
+            end_time,
+        )
+        recorder.record(*record)
     print()
 
 
@@ -293,34 +395,36 @@ def alter_tables(
     print()
     table_num = random.randint(0, granularity.value - 1)  # In case of prefetching
     if database_system in OPENDIC_EXPS:
+        props = {
+            "name": f"t_{table_num}",
+            "database_name": "BEETLE_DB",
+            "schema_name": "PUBLIC",
+            "kind": "TABLE",
+            "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT", f"altered_{num_exp}": "TEXT"},
+            "comment": "",
+            "cluster_by": "",
+            "rows": 0,
+            "bytes": 0,
+            "owner": "TRAINING_ROLE",
+            "retention_time": "1",
+            "automatic_clustering": "OFF",
+            "change_tracking": "OFF",
+            "search_optimization": "OFF",
+            "search_optimization_progress": 0,
+            "search_optimization_bytes": 0,
+            "is_external": "N",
+            "enable_schema_evolution": "N",
+            "owner_role_type": "ROLE",
+            "is_event": "N",
+            "budget": "",
+            "is_hybrid": "N",
+            "is_iceberg": "N",
+            "is_dynamic": "N",
+            "is_immutable": "N",
+        }
         alter_query = f"""
         ALTER OPEN table t_{table_num}
-        PROPS {{"name": "t_{table_num}",
-          "database_name": "BEETLE_DB",
-          "schema_name": "PUBLIC",
-          "kind": "TABLE",
-          "columns": {{"key": "INTEGER PRIMARY KEY", "value": "TEXT", "altered_{num_exp} TEXT}},
-          "comment": "",
-          "cluster_by": "",
-          "rows": 0,
-          "bytes": 0,
-          "owner": "TRAINING_ROLE",
-          "retention_time": "1",
-          "automatic_clustering": "OFF",
-          "change_tracking": "OFF",
-          "search_optimization": "OFF",
-          "search_optimization_progress": 0,
-          "search_optimization_bytes": 0,
-          "is_external": "N",
-          "enable_schema_evolution": "N",
-          "owner_role_type": "ROLE",
-          "is_event": "N",
-          "budget": "",
-          "is_hybrid": "N",
-          "is_iceberg": "N",
-          "is_dynamic": "N",
-          "is_immutable": "N"
-        }}
+        PROPS {props}
         """
 
     else:
@@ -581,7 +685,17 @@ def main():
         "--db",
         type=str,
         required=True,
-        choices=["sqlite", "duckdb", "postgres", "snowflake", "opendic_file", "opendic_file_cached", "opendic_cloud_azure"],
+        choices=[
+            "sqlite",
+            "duckdb",
+            "postgres",
+            "snowflake",
+            "opendic_file",
+            "opendic_file_batch",
+            "opendic_file_cached",
+            "opendic_file_cached_batch",
+            "opendic_cloud_azure",
+        ],
         help="Database system to test",
     )
     parser.add_argument(
@@ -601,7 +715,9 @@ def main():
         "postgres": DatabaseSystem.POSTGRES,
         "snowflake": DatabaseSystem.SNOWFLAKE,
         "opendic_file": DatabaseSystem.OPENDIC_POLARIS_FILE,
+        "opendic_file_batch": DatabaseSystem.OPENDIC_POLARIS_FILE_BATCH,
         "opendic_file_cached": DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED,
+        "opendic_file_cached_batch": DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED_BATCH,
         "opendic_cloud_azure": DatabaseSystem.OPENDIC_POLARIS_AZURE,
     }
 
