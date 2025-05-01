@@ -186,6 +186,38 @@ def experiment_opendic_function(recorder: DataRecorder, database_system: Databas
     finally:
         logging.info("Function experiment finished.")
 
+def experiment_standard_function(recorder: DataRecorder, database_system: DatabaseSystem):
+    try:
+        logging.info("Starting function experiment!")
+
+        for gran in Granularity:
+            logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
+            with connect_standard_database(database_system=database_system) as conn:
+                logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
+                run_create_function(conn=conn, database_system=database_system, granularity=gran, recorder=recorder)
+
+                for num_exp in range(3):
+                    # ALTER
+                    run_alter_function(
+                        conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
+                    )
+
+                    # COMMENT
+                    run_comment_function(
+                        conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
+                    )
+
+                    # SHOW
+                    run_show_functions(
+                        conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
+                    )
+
+                logging.info(f"Function Experiment | Granularity: {gran.value} | Status: SUCCESSFUL")
+                drop_schema(conn=conn, database_system=database_system, database_object=DatabaseObject.FUNCTION)
+    except Exception as e:
+        logging.error(f"Function experiment failed: {e}")
+    finally:
+        logging.info("Function experiment finished.")
 
 def main():
     # Set up command line argument parsing
@@ -211,7 +243,7 @@ def main():
         "--exp",
         type=str,
         required=True,
-        choices=["standard", "opendic"],
+        choices=["standard", "opendic", "opendic_function", "standard_function"],
         help="Which experiment to run",
     )
 
@@ -249,6 +281,10 @@ def main():
             experiment_standard(recorder=recorder, database_system=database_system)
         elif args.exp == "opendic":
             experiment_opendic(recorder=recorder, database_system=database_system)
+        elif args.exp == "opendic_function":
+            experiment_opendic_function(recorder=recorder, database_system=database_system)
+        elif args.exp == "standard_function":
+            experiment_standard_function(recorder=recorder, database_system=database_system)
 
         logging.info("Done!")
 
