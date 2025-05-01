@@ -424,7 +424,7 @@ def alter_tables(
         }
         alter_query = f"""
         ALTER OPEN table t_{table_num}
-        PROPS {props}
+        PROPS {json.dumps(props)}
         """
 
     else:
@@ -443,19 +443,9 @@ def alter_tables(
         end_time,
     )
     recorder.record(*record)
-    print()
-    _comment_object(
-        conn,
-        database_system=database_system,
-        database_object=DatabaseObject.TABLE,
-        granularity=granularity,
-        recorder=recorder,
-        num_exp=num_exp,
-    )
-    print()
 
 
-def _comment_object(
+def comment_object(
     conn: sqlite3.Connection
     | duckdb.DuckDBPyConnection
     | psycopg2.extensions.connection
@@ -473,40 +463,42 @@ def _comment_object(
     object_num = random.randint(0, granularity.value - 1)
     if database_system == DatabaseSystem.SQLITE and database_object.value == "table":
         # ALTER column name
-        comment_query = f"alter {database_object.value} t_{object_num} RENAME COLUMN value TO value_altered;"
+        comment_query = f"ALTER {database_object.value} t_{object_num} RENAME COLUMN value TO value_altered;"
 
     elif database_system in OPENDIC_EXPS:
+        props = {
+            "name": f"t_{object_num}",
+            "database_name": "BEETLE_DB",
+            "schema_name": "PUBLIC",
+            "kind": "TABLE",
+            "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT", f"altered_{num_exp}": "TEXT"},
+            "comment": "This {database_object.value} has been altered",
+            "cluster_by": "",
+            "rows": 0,
+            "bytes": 0,
+            "owner": "TRAINING_ROLE",
+            "retention_time": "1",
+            "automatic_clustering": "OFF",
+            "change_tracking": "OFF",
+            "search_optimization": "OFF",
+            "search_optimization_progress": 0,
+            "search_optimization_bytes": 0,
+            "is_external": "N",
+            "enable_schema_evolution": "N",
+            "owner_role_type": "ROLE",
+            "is_event": "N",
+            "budget": "",
+            "is_hybrid": "N",
+            "is_iceberg": "N",
+            "is_dynamic": "N",
+            "is_immutable": "N",
+        }
         comment_query = f"""
         ALTER OPEN table t_{object_num}
-        PROPS {{"name": "t_{object_num}",
-          "database_name": "BEETLE_DB",
-          "schema_name": "PUBLIC",
-          "kind": "TABLE",
-          "columns": {{"key": "INTEGER PRIMARY KEY", "value": "TEXT", "altered_{num_exp} TEXT}},
-          "comment": "This {database_object.value} has been altered",
-          "cluster_by": "",
-          "rows": 0,
-          "bytes": 0,
-          "owner": "TRAINING_ROLE",
-          "retention_time": "1",
-          "automatic_clustering": "OFF",
-          "change_tracking": "OFF",
-          "search_optimization": "OFF",
-          "search_optimization_progress": 0,
-          "search_optimization_bytes": 0,
-          "is_external": "N",
-          "enable_schema_evolution": "N",
-          "owner_role_type": "ROLE",
-          "is_event": "N",
-          "budget": "",
-          "is_hybrid": "N",
-          "is_iceberg": "N",
-          "is_dynamic": "N",
-          "is_immutable": "N"
-        }}
+        PROPS {json.dumps(props)}
         """
     else:
-        comment_query = f"comment on {database_object.value} t_{object_num} is 'This {database_object.value} has been altered';"
+        comment_query = f"COMMENT ON {database_object.value} t_{object_num} is 'This {database_object.value} has been altered';"
 
     _current_task_loading(comment_query)
     start_time, end_time, query_time = _execute_timed_query(conn=conn, query=comment_query, database_system=database_system)
@@ -525,10 +517,8 @@ def _comment_object(
 
     # Clean up. For sqlite
     if database_system == DatabaseSystem.SQLITE and database_object.value == "table":
-        with connect_sqlite() as conn:
-            query = f"alter table t_{object_num} RENAME COLUMN value_altered TO value;"
-            conn.execute(query)
-            conn.commit()
+        clean_query = f"ALTER TABLE t_{object_num} RENAME COLUMN value_altered TO value;"
+        _execute_timed_query(conn=conn, query=clean_query, database_system=database_system)
 
 
 def show_objects(
@@ -560,7 +550,7 @@ def show_objects(
     elif database_system in OPENDIC_EXPS:
         query = f"show open {database_object.value}"
     else:
-        query = "show tables"
+        query = "SHOW tables"
     start_time, end_time, query_time = _execute_timed_query(conn=conn, query=query, database_system=database_system)
     record = (
         database_system,
@@ -629,6 +619,16 @@ def experiment_standard(recorder: DataRecorder, database_system: DatabaseSystem)
                 create_tables(conn=conn, database_system=database_system, num_objects=gran, recorder=recorder)
                 for num_exp in range(3):
                     alter_tables(conn=conn, database_system=database_system, granularity=gran, num_exp=num_exp, recorder=recorder)
+                    print()
+                    comment_object(
+                        conn=conn,
+                        database_system=database_system,
+                        database_object=DatabaseObject.TABLE,
+                        granularity=gran,
+                        recorder=recorder,
+                        num_exp=num_exp,
+                    )
+                    print()
                     show_objects(
                         conn=conn,
                         database_system=database_system,
@@ -658,6 +658,14 @@ def experiment_opendic(recorder: DataRecorder, database_system: DatabaseSystem):
                 alter_tables(
                     conn=conn,
                     database_system=database_system,
+                    granularity=gran,
+                    recorder=recorder,
+                    num_exp=num_exp,
+                )
+                comment_object(
+                    conn=conn,
+                    database_system=database_system,
+                    database_object=DatabaseObject.TABLE,
                     granularity=gran,
                     recorder=recorder,
                     num_exp=num_exp,
