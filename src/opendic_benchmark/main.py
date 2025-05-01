@@ -18,16 +18,15 @@ from opendic_benchmark.consts import (
     DatabaseSystem,
     Granularity,
 )
+from opendic_benchmark.exp_function import (
+    run_alter_function,
+    run_comment_function,
+    run_create_function,
+    run_show_functions,
+)
 from opendic_benchmark.exp_table import alter_tables, comment_object, create_tables, show_objects
 from opendic_benchmark.experiment_logger.data_recorder import DataRecorder
 from opendic_benchmark.runner import close_database, connect_opendict, connect_standard_database, execute_timed_query
-
-from opendic_benchmark.exp_function import (
-    run_create_function,
-    run_alter_function,
-    run_comment_function,
-    run_show_functions,
-)
 
 # Configure logging
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -151,6 +150,7 @@ def experiment_opendic(recorder: DataRecorder, database_system: DatabaseSystem):
     finally:
         logging.info("Experiment 1 finished.")
 
+
 def experiment_opendic_function(recorder: DataRecorder, database_system: DatabaseSystem):
     try:
         logging.info("Starting function experiment!")
@@ -165,13 +165,19 @@ def experiment_opendic_function(recorder: DataRecorder, database_system: Databas
 
             for num_exp in range(3):
                 # ALTER
-                run_alter_function(conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp)
+                run_alter_function(
+                    conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
+                )
 
                 # COMMENT
-                run_comment_function(conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp)
+                run_comment_function(
+                    conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
+                )
 
                 # SHOW
-                run_show_functions(conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp)
+                run_show_functions(
+                    conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
+                )
 
             logging.info(f"Function Experiment | Granularity: {gran.value} | Status: SUCCESSFUL")
             drop_schema(conn=conn, database_system=database_system, database_object=DatabaseObject.FUNCTION)
@@ -179,6 +185,7 @@ def experiment_opendic_function(recorder: DataRecorder, database_system: Databas
         logging.error(f"Function experiment failed: {e}")
     finally:
         logging.info("Function experiment finished.")
+
 
 def main():
     # Set up command line argument parsing
