@@ -18,11 +18,8 @@ def run_create_function(conn, database_system: DatabaseSystem, granularity: Gran
                         USE experiment;"""
         execute_timed_query(conn, database_system, init_query)
     elif database_system == DatabaseSystem.SNOWFLAKE:
-        init_query = """
-        CREATE OR REPLACE SCHEMA metadata_experiment;
-        USE SCHEMA metadata_experiment;
-        """
-        execute_timed_query(conn, database_system, init_query)
+        execute_timed_query(conn, database_system, "CREATE OR REPLACE SCHEMA metadata_experiment;")
+        execute_timed_query(conn, database_system, "USE SCHEMA metadata_experiment;")
     elif database_system in OPENDIC_EXPS:
         init_query = """
         DEFINE OPEN function
@@ -50,11 +47,11 @@ def run_create_function(conn, database_system: DatabaseSystem, granularity: Gran
             """
         # Here we have to conform to platform-specific syntax
         elif database_system == DatabaseSystem.SNOWFLAKE:
-            query = f"CREATE OR REPLACE FUNCTION f_{i}(a INT, b INT) RETURNS INT LANGUAGE SQL AS $$ a + b $$;"
+            query = f"CREATE FUNCTION f_{i}(a INT, b INT) RETURNS INT LANGUAGE SQL AS $$ a + b $$;"
         elif database_system == DatabaseSystem.DUCKDB:
-            query = f"CREATE OR REPLACE MACRO f_{i}(a, b) AS a + b;"
+            query = f"CREATE MACRO f_{i}(a, b) AS a + b;"
         elif database_system == DatabaseSystem.POSTGRES:
-            query = f"CREATE OR REPLACE FUNCTION f_{i}(a integer, b integer) RETURNS integer LANGUAGE SQL IMMUTABLE RETURNS NULL ON NULL INPUT RETURN a + b;"
+            query = f"CREATE FUNCTION f_{i}(a integer, b integer) RETURNS integer LANGUAGE SQL RETURN a + b;"
         else:
             # SQLite does not support functions
             continue
@@ -74,17 +71,17 @@ def run_alter_function(conn, database_system: DatabaseSystem, granularity: Granu
         PROPS {{
           "name": "f_{idx}",
           "language": "sql",
-          "args": {{"a": "int", "b": "int", "extra_{idx}": "int"}},
-          "definition": "SELECT a + b + extra_{idx}",
+          "args": {{"a": "int", "b": "int"}},
+          "definition": "SELECT a + b + 42",
           "comment": ""
         }}
         """
     elif database_system == DatabaseSystem.SNOWFLAKE:
-        query = f"CREATE OR REPLACE FUNCTION f_{idx}(a INT, b INT, extra_{idx} INT) RETURNS INT LANGUAGE SQL AS $$ a + b + extra_{idx} $$;"
+        query = f"CREATE OR REPLACE FUNCTION f_{idx}(a INT, b INT) RETURNS INT LANGUAGE SQL AS $$ a + b + 42 $$;"
     elif database_system == DatabaseSystem.DUCKDB:
-        query = f"CREATE OR REPLACE MACRO f_{idx}(a, b, extra_{idx}) AS a + b + extra_{idx};"
+        query = f"CREATE OR REPLACE MACRO f_{idx}(a, b) AS a + b + 42;"
     elif database_system == DatabaseSystem.POSTGRES:
-        query = f"CREATE OR REPLACE FUNCTION f_{idx}(a integer, b integer, extra_{idx} integer) RETURNS integer LANGUAGE SQL IMMUTABLE RETURNS NULL ON NULL INPUT RETURN a + b + extra_{idx};"
+        query = f"CREATE OR REPLACE FUNCTION f_{idx}(a integer, b integer) RETURNS integer LANGUAGE SQL RETURN a + b + 42;"
     else:
         # SQLite does not support functions
         return
@@ -118,8 +115,12 @@ def run_comment_function(conn, database_system: DatabaseSystem, granularity: Gra
         }}
         """
     # Snowflake and Postgres have the same syntax for comments
-    elif database_system == DatabaseSystem.SNOWFLAKE or database_system == DatabaseSystem.POSTGRES:
+    elif database_system == DatabaseSystem.POSTGRES:
         query = f"COMMENT ON FUNCTION f_{idx} IS 'Function altered at experiment {num_exp}';"
+
+    elif database_system == DatabaseSystem.SNOWFLAKE:
+        query = f"COMMENT ON FUNCTION f_{idx}(INT, INT) IS 'Function altered at experiment {num_exp}';"
+
     elif database_system == DatabaseSystem.DUCKDB:
         query = f"COMMENT ON MACRO f_{idx} IS 'Function altered at experiment {num_exp}';"
     else:
@@ -158,9 +159,9 @@ def run_show_functions(
             AND p.proname LIKE 'f_%';
             """
     elif database_system == DatabaseSystem.SNOWFLAKE:
-        query = "SHOW USER FUNCTIONS"  # this works
+        query = "SHOW USER FUNCTIONS limit 10000;"
     elif database_system in OPENDIC_EXPS:
-        query = "SHOW OPEN function"
+        query = "SHOW OPEN function;"
     elif database_system == DatabaseSystem.DUCKDB:
         query = "SELECT * FROM duckdb_functions() WHERE function_type = 'macro' AND function_name LIKE 'f_%';"
 

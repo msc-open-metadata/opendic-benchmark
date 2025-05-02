@@ -24,7 +24,7 @@ from opendic_benchmark.exp_function import (
     run_create_function,
     run_show_functions,
 )
-from opendic_benchmark.exp_table import alter_tables, comment_object, create_tables, show_objects
+from opendic_benchmark.exp_table import alter_tables, comment_object, create_tables, create_tables_batch, show_objects
 from opendic_benchmark.experiment_logger.data_recorder import DataRecorder
 from opendic_benchmark.runner import close_database, connect_opendict, connect_standard_database, execute_timed_query
 
@@ -57,10 +57,7 @@ def drop_schema(
             drop_query = """DROP SCHEMA public CASCADE;
                             CREATE SCHEMA public;"""
         if database_system == DatabaseSystem.SNOWFLAKE:
-            drop_query = """
-            use schema public;
-            DROP SCHEMA if exists metadata_experiment CASCADE;
-            """
+            drop_query = "DROP SCHEMA metadata_experiment CASCADE;"
         if database_system in OPENDIC_EXPS:
             drop_query = f"DROP OPEN {database_object.value}"
 
@@ -73,7 +70,7 @@ def drop_schema(
         logging.error(f"Drop schema failed: {e}")
 
 
-def experiment_standard(recorder: DataRecorder, database_system: DatabaseSystem):
+def experiment_standard_table(recorder: DataRecorder, database_system: DatabaseSystem):
     try:
         logging.info("Starting experiment 1!")
 
@@ -109,8 +106,40 @@ def experiment_standard(recorder: DataRecorder, database_system: DatabaseSystem)
     finally:
         logging.info("Experiment 1 finished.")
 
+def experiment_standard_function(recorder: DataRecorder, database_system: DatabaseSystem):
+    try:
+        logging.info("Starting function experiment!")
 
-def experiment_opendic(recorder: DataRecorder, database_system: DatabaseSystem):
+        for gran in Granularity:
+            logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
+            with connect_standard_database(database_system=database_system) as conn:
+                logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
+                run_create_function(conn=conn, database_system=database_system, granularity=gran, recorder=recorder)
+
+                for num_exp in range(3):
+                    # ALTER
+                    run_alter_function(
+                        conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
+                    )
+
+                    # COMMENT
+                    run_comment_function(
+                        conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
+                    )
+
+                    # SHOW
+                    run_show_functions(
+                        conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
+                    )
+
+                logging.info(f"Function Experiment | Granularity: {gran.value} | Status: SUCCESSFUL")
+                drop_schema(conn=conn, database_system=database_system, database_object=DatabaseObject.FUNCTION)
+    except Exception as e:
+        logging.error(f"Function experiment failed: {e}")
+    finally:
+        logging.info("Function experiment finished.")
+
+def experiment_opendic_table(recorder: DataRecorder, database_system: DatabaseSystem):
     try:
         logging.info("Starting experiment 1!")
 
@@ -186,38 +215,45 @@ def experiment_opendic_function(recorder: DataRecorder, database_system: Databas
     finally:
         logging.info("Function experiment finished.")
 
-def experiment_standard_function(recorder: DataRecorder, database_system: DatabaseSystem):
+def experiment_opendic_table_batch(recorder: DataRecorder, database_system: DatabaseSystem):
     try:
-        logging.info("Starting function experiment!")
+        logging.info("Starting experiment 1!")
 
         for gran in Granularity:
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
-            with connect_standard_database(database_system=database_system) as conn:
-                logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
-                run_create_function(conn=conn, database_system=database_system, granularity=gran, recorder=recorder)
-
-                for num_exp in range(3):
-                    # ALTER
-                    run_alter_function(
-                        conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
-                    )
-
-                    # COMMENT
-                    run_comment_function(
-                        conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
-                    )
-
-                    # SHOW
-                    run_show_functions(
-                        conn=conn, database_system=database_system, granularity=gran, recorder=recorder, num_exp=num_exp
-                    )
-
-                logging.info(f"Function Experiment | Granularity: {gran.value} | Status: SUCCESSFUL")
-                drop_schema(conn=conn, database_system=database_system, database_object=DatabaseObject.FUNCTION)
+            conn = connect_opendict()
+            logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
+            create_tables_batch(conn=conn, database_system=database_system, num_objects=gran, recorder=recorder)
+            for num_exp in range(3):
+                alter_tables(
+                    conn=conn,
+                    database_system=database_system,
+                    granularity=gran,
+                    recorder=recorder,
+                    num_exp=num_exp,
+                )
+                comment_object(
+                    conn=conn,
+                    database_system=database_system,
+                    database_object=DatabaseObject.TABLE,
+                    granularity=gran,
+                    recorder=recorder,
+                    num_exp=num_exp,
+                )
+                show_objects(
+                    conn=conn,
+                    database_system=database_system,
+                    database_object=DatabaseObject.TABLE,
+                    granularity=gran,
+                    recorder=recorder,
+                    num_exp=num_exp,
+                )
+            logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: SUCCESSFUL")
+            drop_schema(conn=conn, database_system=database_system)
     except Exception as e:
-        logging.error(f"Function experiment failed: {e}")
+        logging.error(f"Experiment 1 failed: {e}")
     finally:
-        logging.info("Function experiment finished.")
+        logging.info("Experiment 1 finished.")
 
 def main():
     # Set up command line argument parsing
@@ -243,7 +279,7 @@ def main():
         "--exp",
         type=str,
         required=True,
-        choices=["standard", "opendic", "opendic_function", "standard_function"],
+        choices=["standard_table", "opendic_table", "standard_function", "opendic_function", "opendic_table_batch"],
         help="Which experiment to run",
     )
 
@@ -264,6 +300,10 @@ def main():
 
     database_system: DatabaseSystem = db_system_map[args.db]
 
+    if database_system == "sqlite" and args.exp == "standard_function":
+        logging.info("No function support")
+        exit(1)
+
     # Create recorder before experiment
     if database_system in OPENDIC_EXPS:
         conn = connect_opendict()
@@ -277,14 +317,16 @@ def main():
         drop_schema(conn=conn, database_system=database_system)
 
         # Run the correct experiment based on the database system and args
-        if args.exp == "standard":
-            experiment_standard(recorder=recorder, database_system=database_system)
-        elif args.exp == "opendic":
-            experiment_opendic(recorder=recorder, database_system=database_system)
-        elif args.exp == "opendic_function":
-            experiment_opendic_function(recorder=recorder, database_system=database_system)
+        if args.exp == "standard_table":
+            experiment_standard_table(recorder=recorder, database_system=database_system)
+        elif args.exp == "opendic_table":
+            experiment_opendic_table(recorder=recorder, database_system=database_system)
+        elif args.exp == "opendic_table_batch":
+            experiment_opendic_table_batch(recorder=recorder, database_system=database_system)
         elif args.exp == "standard_function":
             experiment_standard_function(recorder=recorder, database_system=database_system)
+        elif args.exp == "opendic_function":
+            experiment_opendic_function(recorder=recorder, database_system=database_system)
 
         logging.info("Done!")
 

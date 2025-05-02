@@ -28,11 +28,10 @@ def create_tables(
         init_query = """CREATE schema experiment;
                         use experiment;"""
         _ = execute_timed_query(conn, query=init_query, database_system=database_system)
-    elif database_system == DatabaseSystem.SNOWFLAKE:
-        with connect_snowflake() as conn:
-            with conn.cursor() as curs:
-                curs.execute("CREATE or replace SCHEMA metadata_experiment")
-                curs.execute("use schema metadata_experiment;")
+    elif database_system == DatabaseSystem.SNOWFLAKE and isinstance(conn, SnowflakeConnection):
+        with conn.cursor() as curs:
+            curs.execute("CREATE or replace SCHEMA metadata_experiment")
+            curs.execute("use schema metadata_experiment;")
 
     elif database_system in OPENDIC_EXPS:
         init_query: str = """
@@ -128,7 +127,7 @@ def create_tables_batch(
     logging=True,
 ):
     print()
-    assert DatabaseSystem in {DatabaseSystem.OPENDIC_POLARIS_FILE_BATCH, DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED_BATCH}
+    assert database_system in {DatabaseSystem.OPENDIC_POLARIS_FILE_BATCH, DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED_BATCH}
 
     init_query: str = """
     DEFINE OPEN table
@@ -196,7 +195,7 @@ def create_tables_batch(
 
     complete_query: str = f"""
     CREATE OPEN BATCH table
-    PROPS {json.dumps(query_objs)}
+    OBJECTS {json.dumps(query_objs)}
     """
 
     print(complete_query)
