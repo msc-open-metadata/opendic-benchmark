@@ -11,7 +11,7 @@ dependencies = [
     "duckdb>=1.2.2",
     "psycopg2-binary>=2.9.10",
     "snowflake-connector-python>=3.14.1",
-    "snowflake-opendic>=0.1.15",
+    "snowflake-opendic>=0.1.22",
 ]
 
 [build-system]
