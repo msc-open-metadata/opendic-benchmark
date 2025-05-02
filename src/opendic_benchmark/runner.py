@@ -1,6 +1,7 @@
 import datetime
 import sqlite3
 import sys
+import time
 
 import duckdb
 import psycopg2
@@ -141,7 +142,7 @@ def execute_timed_query(
     return start_time, end_time, end_time - start_time
 
 
-def _current_task_loading(query: str):
+def _current_task_loading(query: str, max_length:int = 80):
     """Simulate progress loading in terminal. Writes the following: "--running: {query}..." to terminal. The dots should blink while the query is running."""
-    sys.stdout.write(f"\r--running: {query}")
-    sys.stdout.flush()  # Force output to update in terminal
+    sys.stdout.write(f"\r--running: {query[:max_length]}")  # Truncate query to max_length
+    sys.stdout.flush()

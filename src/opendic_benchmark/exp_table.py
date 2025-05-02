@@ -11,7 +11,7 @@ from opendic_benchmark.consts import OPENDIC_EXPS, DatabaseObject, DatabaseSyste
 from opendic_benchmark.experiment_logger.data_recorder import (
     DataRecorder,
 )
-from opendic_benchmark.runner import connect_snowflake, execute_timed_query
+from opendic_benchmark.runner import execute_timed_query
 
 
 def create_tables(
@@ -161,60 +161,114 @@ def create_tables_batch(
     """
     _ = execute_timed_query(conn=conn, query=init_query, database_system=database_system)
 
-    # Create batch job
-    query_objs = [
-        {
-            "name": f"t_{i}",
-            "database_name": "BEETLE_DB",
-            "schema_name": "PUBLIC",
-            "kind": "TABLE",
-            "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT"},
-            "comment": "",
-            "cluster_by": "",
-            "rows": 0,
-            "bytes": 0,
-            "owner": "TRAINING_ROLE",
-            "retention_time": "1",
-            "automatic_clustering": "OFF",
-            "change_tracking": "OFF",
-            "search_optimization": "OFF",
-            "search_optimization_progress": 0,
-            "search_optimization_bytes": 0,
-            "is_external": "N",
-            "enable_schema_evolution": "N",
-            "owner_role_type": "ROLE",
-            "is_event": "N",
-            "budget": "",
-            "is_hybrid": "N",
-            "is_iceberg": "N",
-            "is_dynamic": "N",
-            "is_immutable": "N",
-        }
-        for i in range(num_objects.value)
-    ]
+    if num_objects.value <= 10000:
+        # Create batch job
+        query_objs = [
+            {
+                "name": f"t_{i}",
+                "database_name": "BEETLE_DB",
+                "schema_name": "PUBLIC",
+                "kind": "TABLE",
+                "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT"},
+                "comment": "",
+                "cluster_by": "",
+                "rows": 0,
+                "bytes": 0,
+                "owner": "TRAINING_ROLE",
+                "retention_time": "1",
+                "automatic_clustering": "OFF",
+                "change_tracking": "OFF",
+                "search_optimization": "OFF",
+                "search_optimization_progress": 0,
+                "search_optimization_bytes": 0,
+                "is_external": "N",
+                "enable_schema_evolution": "N",
+                "owner_role_type": "ROLE",
+                "is_event": "N",
+                "budget": "",
+                "is_hybrid": "N",
+                "is_iceberg": "N",
+                "is_dynamic": "N",
+                "is_immutable": "N",
+            }
+            for i in range(num_objects.value)
+        ]
 
-    complete_query: str = f"""
-    CREATE OPEN BATCH table
-    OBJECTS {json.dumps(query_objs)}
-    """
+        complete_query: str = f"""
+        CREATE OPEN BATCH table
+        OBJECTS {json.dumps(query_objs)}
+        """
 
-    print(complete_query)
+        start_time, end_time, query_time = execute_timed_query(conn=conn, query=complete_query, database_system=database_system)
+        if logging:
+            record = (
+                database_system,
+                DDLCommand.CREATE,
+                f"CREATE OPEN BATCH table OBJECTS {json.dumps(query_objs)[-1]}",
+                DatabaseObject.TABLE,
+                num_objects.value,
+                0,
+                query_time.total_seconds(),
+                start_time,
+                end_time,
+            )
+            recorder.record(*record)
+        print()
 
-    start_time, end_time, query_time = execute_timed_query(conn=conn, query=complete_query, database_system=database_system)
-    if logging:
-        record = (
-            database_system,
-            DDLCommand.CREATE,
-            "CREATE TABLE t_{i} (id INTEGER PRIMARY KEY, value TEXT);",
-            DatabaseObject.TABLE,
-            num_objects.value,
-            0,
-            query_time.total_seconds(),
-            start_time,
-            end_time,
-        )
-        recorder.record(*record)
-    print()
+    else:  # Split large batch.
+        for i in range(num_objects.value // 10_000):
+            query_objs_batch = [
+                {
+                    "name": f"t_{j}",
+                    "database_name": "BEETLE_DB",
+                    "schema_name": "PUBLIC",
+                    "kind": "TABLE",
+                    "columns": {"key": "INTEGER PRIMARY KEY", "value": "TEXT"},
+                    "comment": "",
+                    "cluster_by": "",
+                    "rows": 0,
+                    "bytes": 0,
+                    "owner": "TRAINING_ROLE",
+                    "retention_time": "1",
+                    "automatic_clustering": "OFF",
+                    "change_tracking": "OFF",
+                    "search_optimization": "OFF",
+                    "search_optimization_progress": 0,
+                    "search_optimization_bytes": 0,
+                    "is_external": "N",
+                    "enable_schema_evolution": "N",
+                    "owner_role_type": "ROLE",
+                    "is_event": "N",
+                    "budget": "",
+                    "is_hybrid": "N",
+                    "is_iceberg": "N",
+                    "is_dynamic": "N",
+                    "is_immutable": "N",
+                }
+                for j in range(i * 10_000, min((i + 1) * 10_000, num_objects.value))
+            ]
+            complete_query_batch: str = f"""
+            CREATE OPEN BATCH table
+            OBJECTS {json.dumps(query_objs_batch)}
+            """
+
+            start_time, end_time, query_time = execute_timed_query(
+                conn=conn, query=complete_query_batch, database_system=database_system
+            )
+            if logging:
+                record = (
+                    database_system,
+                    DDLCommand.CREATE,
+                    f"CREATE OPEN BATCH table OBJECTS {json.dumps(query_objs_batch)[-1]}",
+                    DatabaseObject.TABLE,
+                    num_objects.value,
+                    0,
+                    query_time.total_seconds(),
+                    start_time,
+                    end_time,
+                )
+                recorder.record(*record)
+            print()
 
 
 def alter_tables(
