@@ -137,7 +137,7 @@ def execute_timed_query(
         if isinstance(response, PrettyResponse):  # Might be error
             assert "error" not in response.data.keys(), f"Error in response: {response.data}"
         elif isinstance(response, DataFrame):
-            print(f"Retrieved: {response.size} elements")
+            assert response.size > 0
 
     end_time = datetime.datetime.now()
 
@@ -146,6 +146,8 @@ def execute_timed_query(
 
 def _current_task_loading(query: str, max_length: int = 80):
     """Simulate progress loading in terminal. Writes the following: "--running: {query}..." to terminal. The dots should blink while the query is running."""
-    first_line:str = query.split('\n', 1)[0]
+    lines: list[str] = query.split('\n')
+    first_line = lines[0] if len(lines) == 1 else lines[1]
+
     sys.stdout.write(f"\r--running: {first_line[:max_length]}")  # Truncate query to max_length
     sys.stdout.flush()

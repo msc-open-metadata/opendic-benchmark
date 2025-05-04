@@ -61,7 +61,7 @@ def drop_schema(
         if database_system in OPENDIC_EXPS:
             drop_query = f"DROP OPEN {database_object.value}"
 
-        logging.info(f"Dropped: {database_system}")
+        logging.info(f"Dropping: {database_system}")
         if drop_query == "None":
             logging.info("No drop query provided")
         else:
@@ -70,7 +70,7 @@ def drop_schema(
         logging.error(f"Drop schema failed: {e}")
 
 
-def experiment_standard_table(recorder: DataRecorder, database_system: DatabaseSystem):
+def experiment_standard_table(recorder: DataRecorder, database_system: DatabaseSystem, start_idx=16552):
     try:
         logging.info("Starting experiment 1!")
 
@@ -106,7 +106,8 @@ def experiment_standard_table(recorder: DataRecorder, database_system: DatabaseS
     finally:
         logging.info("Experiment 1 finished.")
 
-def experiment_standard_function(recorder: DataRecorder, database_system: DatabaseSystem, start_idx = 0):
+
+def experiment_standard_function(recorder: DataRecorder, database_system: DatabaseSystem, start_idx=0):
     try:
         logging.info("Starting function experiment!")
 
@@ -114,7 +115,9 @@ def experiment_standard_function(recorder: DataRecorder, database_system: Databa
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
             with connect_standard_database(database_system=database_system) as conn:
                 logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
-                run_create_function(conn=conn, database_system=database_system, granularity=gran, recorder=recorder, start_idx=start_idx)
+                run_create_function(
+                    conn=conn, database_system=database_system, granularity=gran, recorder=recorder, start_idx=start_idx
+                )
 
                 for num_exp in range(3):
                     # ALTER
@@ -138,6 +141,7 @@ def experiment_standard_function(recorder: DataRecorder, database_system: Databa
         logging.error(f"Function experiment failed: {e}")
     finally:
         logging.info("Function experiment finished.")
+
 
 def experiment_opendic_table(recorder: DataRecorder, database_system: DatabaseSystem):
     try:
@@ -215,6 +219,7 @@ def experiment_opendic_function(recorder: DataRecorder, database_system: Databas
     finally:
         logging.info("Function experiment finished.")
 
+
 def experiment_opendic_table_batch(recorder: DataRecorder, database_system: DatabaseSystem):
     try:
         logging.info("Starting experiment 1!")
@@ -254,6 +259,7 @@ def experiment_opendic_table_batch(recorder: DataRecorder, database_system: Data
         logging.error(f"Experiment 1 failed: {e}")
     finally:
         logging.info("Experiment 1 finished.")
+
 
 def main():
     # Set up command line argument parsing
@@ -314,7 +320,7 @@ def main():
 
     try:
         # Clean up any existing schemas first
-        # drop_schema(conn=conn, database_system=database_system)
+        drop_schema(conn=conn, database_system=database_system)
 
         # Run the correct experiment based on the database system and args
         if args.exp == "standard_table":

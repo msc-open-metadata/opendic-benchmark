@@ -20,7 +20,8 @@ def create_tables(
     num_objects: Granularity,
     recorder: DataRecorder,
     logging=True,
-    start_idx=0
+    start_idx
+    =0
 ):
     """Example: Create 1000 tables"""
     print()
