@@ -1,12 +1,12 @@
 import datetime
 import sqlite3
 import sys
-import time
 
 import duckdb
 import psycopg2
 import snowflake.connector
 import toml
+from pandas import DataFrame
 from snowflake_opendic.catalog import OpenDicSnowflakeCatalog
 from snowflake_opendic.pretty_pesponse import PrettyResponse
 from snowflake_opendic.snow_opendic import snowflake_connect
@@ -136,13 +136,16 @@ def execute_timed_query(
         response = conn.sql(query)
         if isinstance(response, PrettyResponse):  # Might be error
             assert "error" not in response.data.keys(), f"Error in response: {response.data}"
+        elif isinstance(response, DataFrame):
+            print(f"Retrieved: {response.size} elements")
 
     end_time = datetime.datetime.now()
 
     return start_time, end_time, end_time - start_time
 
 
-def _current_task_loading(query: str, max_length:int = 80):
+def _current_task_loading(query: str, max_length: int = 80):
     """Simulate progress loading in terminal. Writes the following: "--running: {query}..." to terminal. The dots should blink while the query is running."""
-    sys.stdout.write(f"\r--running: {query[:max_length]}")  # Truncate query to max_length
+    first_line:str = query.split('\n', 1)[0]
+    sys.stdout.write(f"\r--running: {first_line[:max_length]}")  # Truncate query to max_length
     sys.stdout.flush()

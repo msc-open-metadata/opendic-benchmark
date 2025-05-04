@@ -106,7 +106,7 @@ def experiment_standard_table(recorder: DataRecorder, database_system: DatabaseS
     finally:
         logging.info("Experiment 1 finished.")
 
-def experiment_standard_function(recorder: DataRecorder, database_system: DatabaseSystem):
+def experiment_standard_function(recorder: DataRecorder, database_system: DatabaseSystem, start_idx = 0):
     try:
         logging.info("Starting function experiment!")
 
@@ -114,7 +114,7 @@ def experiment_standard_function(recorder: DataRecorder, database_system: Databa
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
             with connect_standard_database(database_system=database_system) as conn:
                 logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
-                run_create_function(conn=conn, database_system=database_system, granularity=gran, recorder=recorder)
+                run_create_function(conn=conn, database_system=database_system, granularity=gran, recorder=recorder, start_idx=start_idx)
 
                 for num_exp in range(3):
                     # ALTER
@@ -314,7 +314,7 @@ def main():
 
     try:
         # Clean up any existing schemas first
-        drop_schema(conn=conn, database_system=database_system)
+        # drop_schema(conn=conn, database_system=database_system)
 
         # Run the correct experiment based on the database system and args
         if args.exp == "standard_table":

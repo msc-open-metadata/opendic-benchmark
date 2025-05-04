@@ -11,7 +11,7 @@ from opendic_benchmark.experiment_logger.data_recorder import (
 from opendic_benchmark.runner import execute_timed_query
 
 
-def run_create_function(conn, database_system: DatabaseSystem, granularity: Granularity, recorder: DataRecorder):
+def run_create_function(conn, database_system: DatabaseSystem, granularity: Granularity, recorder: DataRecorder, start_idx = 0):
     """Create multiple function objects."""
     if database_system == DatabaseSystem.DUCKDB:
         init_query = """CREATE schema experiment;
@@ -33,7 +33,7 @@ def run_create_function(conn, database_system: DatabaseSystem, granularity: Gran
         """
         execute_timed_query(conn, database_system, init_query)
 
-    for i in range(granularity.value):
+    for i in range(start_idx ,granularity.value):
         if database_system in OPENDIC_EXPS:
             query = f"""
             CREATE OPEN function f_{i}

@@ -20,6 +20,7 @@ def create_tables(
     num_objects: Granularity,
     recorder: DataRecorder,
     logging=True,
+    start_idx=0
 ):
     """Example: Create 1000 tables"""
     print()
@@ -66,7 +67,7 @@ def create_tables(
         """
         _ = execute_timed_query(conn=conn, query=init_query, database_system=database_system)
 
-    for i in range(num_objects.value):
+    for i in range(start_idx, num_objects.value):
         if database_system in OPENDIC_EXPS:
             # discussion: Create table query from snowflake show tables + snowflake describe table
             # primary key information would best be put in the columns map. Requires support for nested lists/maps so we can represent all columns individually.
