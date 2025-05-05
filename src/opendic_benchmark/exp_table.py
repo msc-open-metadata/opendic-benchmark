@@ -129,7 +129,7 @@ def create_tables_batch(
     logging=True,
 ):
     print()
-    assert database_system in {DatabaseSystem.OPENDIC_POLARIS_FILE_BATCH, DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED_BATCH}
+    assert database_system in {DatabaseSystem.OPENDIC_POLARIS_FILE_BATCH, DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED_BATCH, DatabaseSystem.OPENDIC_POLARIS_AZURE_CACHED_BATCH}
 
     init_query: str = """
     DEFINE OPEN table

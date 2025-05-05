@@ -12,7 +12,8 @@ class DatabaseSystem(Enum):
     OPENDIC_POLARIS_FILE_BATCH = "opendict_polaris_file_batch"
     OPENDIC_POLARIS_FILE_CACHED = "opendict_polaris_file_cache"
     OPENDIC_POLARIS_FILE_CACHED_BATCH = "opendict_polaris_file_cache_batch"
-    OPENDIC_POLARIS_AZURE = "opendict_polaris_cloud_azure"
+    OPENDIC_POLARIS_AZURE_CACHED = "opendict_polaris_cloud_azure_cached"
+    OPENDIC_POLARIS_AZURE_CACHED_BATCH = "opendict_polaris_cloud_azure_cached_batch"
 
 
 class DatabaseObject(Enum):
@@ -46,8 +47,10 @@ class DDLCommand(Enum):
     COMMENT = "COMMENT"
     SHOW = "SHOW"
 
+
 OPENDIC_EXPS = {
-    DatabaseSystem.OPENDIC_POLARIS_AZURE,
+    DatabaseSystem.OPENDIC_POLARIS_AZURE_CACHED,
+    DatabaseSystem.OPENDIC_POLARIS_AZURE_CACHED_BATCH,
     DatabaseSystem.OPENDIC_POLARIS_FILE,
     DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED,
     DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED_BATCH,

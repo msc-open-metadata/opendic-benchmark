@@ -277,7 +277,8 @@ def main():
             "opendic_file_batch",
             "opendic_file_cached",
             "opendic_file_cached_batch",
-            "opendic_cloud_azure",
+            "opendic_cloud_azure_cached",
+            "opendic_cloud_azure_cached_batch",
         ],
         help="Database system to test",
     )
@@ -301,7 +302,8 @@ def main():
         "opendic_file_batch": DatabaseSystem.OPENDIC_POLARIS_FILE_BATCH,
         "opendic_file_cached": DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED,
         "opendic_file_cached_batch": DatabaseSystem.OPENDIC_POLARIS_FILE_CACHED_BATCH,
-        "opendic_cloud_azure": DatabaseSystem.OPENDIC_POLARIS_AZURE,
+        "opendic_cloud_azure_cached": DatabaseSystem.OPENDIC_POLARIS_AZURE_CACHED,
+        "opendic_cloud_azure_cached_batch": DatabaseSystem.OPENDIC_POLARIS_AZURE_CACHED_BATCH,
     }
 
     database_system: DatabaseSystem = db_system_map[args.db]
