@@ -70,7 +70,7 @@ def drop_schema(
         logging.error(f"Drop schema failed: {e}")
 
 
-def experiment_standard_table(recorder: DataRecorder, database_system: DatabaseSystem, start_idx=16552):
+def experiment_standard_table(recorder: DataRecorder, database_system: DatabaseSystem, start_idx=0):
     try:
         logging.info("Starting experiment 1!")
 
@@ -143,7 +143,7 @@ def experiment_standard_function(recorder: DataRecorder, database_system: Databa
         logging.info("Function experiment finished.")
 
 
-def experiment_opendic_table(recorder: DataRecorder, database_system: DatabaseSystem):
+def experiment_opendic_table(recorder: DataRecorder, database_system: DatabaseSystem, start_idx=0):
     try:
         logging.info("Starting experiment 1!")
 
@@ -151,7 +151,7 @@ def experiment_opendic_table(recorder: DataRecorder, database_system: DatabaseSy
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: started")
             conn = connect_opendict()
             logging.info(f"Experiment: 1 | Object: {DatabaseObject.TABLE} | Granularity: {gran.value} | Status: connected")
-            create_tables(conn=conn, database_system=database_system, num_objects=gran, recorder=recorder)
+            create_tables(conn=conn, database_system=database_system, num_objects=gran, recorder=recorder, start_idx=start_idx)
             for num_exp in range(3):
                 alter_tables(
                     conn=conn,

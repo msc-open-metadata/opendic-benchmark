@@ -35,7 +35,7 @@ def create_tables(
             curs.execute("CREATE or replace SCHEMA metadata_experiment")
             curs.execute("use schema metadata_experiment;")
 
-    elif database_system in OPENDIC_EXPS:
+    elif database_system in OPENDIC_EXPS and start_idx == 0:
         init_query: str = """
         DEFINE OPEN table
         PROPS {
