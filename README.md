@@ -8,17 +8,30 @@ Internet speed for snowflake/cloud experiments: 100-250 MBps down. 50 up
 
 ### Initial run of the opendic-file and opendic-file-cache benchmarks.
 
-Without cleanup, with compaction. Stopped after adding t_16552. Storage usage: 105,39 GB
+Opendict: No cleanup. 16552 objects.
 
-- Files in table: 16928 (Insertions + compactions.)
-- Files in metadata-folder: 67995
+- Storage usage: 105,39 GB
+- Datafiles: 16928
+- Metadatafiles: 67995
 
-With Cleanup. With ~110000 objects. Storage usage: 28,92GB
+Opendict Standard.
 
-- Files in table: 1298 (Insertions + compactions.)
-- Files in metadata-folder: 119484
+- Storage usage: 28,92GB
+- Datafiles: 1298
+- Metadatafiles: 119484
 
-With Cleanup, with cache and using cached batch creates. With ~ objects. Storage usage: 10,8 MB
+Opendict batched creates.
 
-- Files in table: 82 (Insertions + compactions.)
-- Files in metadata-folder: 361
+- Storage usage: 10.8 MB
+- Datafiles: 82
+- Metadatafiles: 361
+
+Duckdb:
+
+- Storage usage: 1,24 GB
+- Datafiles: 100%
+
+Sqlite:
+
+- Storage usage: 0.419 GB
+- Datafiles: 100%
