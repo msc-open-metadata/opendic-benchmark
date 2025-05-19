@@ -1,14 +1,21 @@
 # opendic-benchmark
+
 Benchmarking suite for the opendic polaris extension.
 
 ## Running the benchmark driver:
 
 Syntax:
+
 ```bash
+# Make sure venv is synced:
+uv sync
+
+# Run the benchmark
 uv run python src/opendic_benchmark/main.py --db <datasysytem> --exp <experiment>
 ```
 
 Example:
+
 ```bash
 uv run python src/opendic_benchmark/main.py --db sqlite --exp standard_table
 ```
@@ -22,9 +29,66 @@ uv run python utils/export_parquet.py \
     --db experiment_logs.db
 ```
 
+### Running postgres:
+
+Make sure to the postgres docker container is running (Requires `task` and `docker` ):
+
+Make sure you add the following to `secrets/postgres-conf.toml`, values depend on the settings you use in run:pg-container:
+
+```toml
+[postgres_conf]
+database = "postgres"
+user = "postgres"
+password = "<password>"
+host = "localhost"
+port = 5432
+```
+
+```bash
+task run:pg-container
+
+# Then run the benchmark:
+uv run python src/opendic_benchmark/main.py --db postgres --exp standard_table
+```
+
+### Running snowflake:
+
+Make sure you add the following to `secrets/postgres-conf.toml`, refer to the snowflake documentation to find the values: <https://docs.snowflake.com/en/user-guide/snowsql-config>. The config can be the same one tha snowsql uses.
+
+```toml
+[snowflake_conf]
+account = "<account>"
+user = "<user>"
+password = "<password>"
+warehouse = "<warehouse>"
+database = "<db>"
+```
+
+```bash
+uv run python src/opendic_benchmark/main.py --db snowflake --exp standard_table
+```
+
+### Running opendict:
+
+Refer to <https://github.com/msc-open-metadata/polaris-boot> for infra structure and bootsrapping setup we use to run an instance of our extended polaris via docker compose.
+
+Once you have the polaris polaris instance running on your machine. Example:
+
+```bash
+# Run
+uv run python src/opendic_benchmark/main.py --db opendic_file --exp opendic_table
+
+# Export
+uv run python utils/export_parquet.py \
+    --table opendic_file \
+    --output results/standard/opendic_file.parquet \
+    --db opendic_benchmark_logs.db
+```
+
 ## Notes from benchmark runs
 
 ### Internet speed for snowflake/cloud experiments:
+
 100-250 MBps down. 50 up
 
 ### Counting files and storage
