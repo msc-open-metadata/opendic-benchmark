@@ -142,3 +142,31 @@ Sqlite:
 Postgres:
 
 - Storage usage: 3.54 GB (WAL: 1.07 GB) (Start: 39.4 MB)
+
+### New benchmarks
+
+Opendic cached new
+
+- Storage usage: 143,3 MB
+- Datafiles: 1604
+- Metadatafiles: 4826
+- polaris | 2025-05-25 03:59:33,370 INFO [org.apa.pol.ext.ope.ser.OpenDictService] [,POLARIS] [,,,] (executor-thread-34) Deleted UDO of type: table, reachable files: {totalFiles=1255, metadataFiles=836, dataFiles=419}
+
+Opendic new cached batch
+
+- Storage usage: 13,5 MB
+- Datafiles: 82
+- Metadatafiles: 334
+- polaris | 2025-05-25 09:13:48,583 INFO [org.apa.pol.ext.ope.ser.OpenDictService] [,POLARIS] [,,,] (executor-thread-3) Deleted UDO of type: table, reachable files: {totalFiles=64, metadataFiles=42, dataFiles=22}
+
+Opendic new batch
+
+- Storage usage: 13,5 MB
+- Datafiles: 82
+- Metadatafiles: 334
+
+Opendic new file
+
+- Storage usage:
+- Datafiles:
+- Metadatafiles:
