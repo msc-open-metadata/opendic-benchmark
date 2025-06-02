@@ -1,8 +1,19 @@
 # opendic-benchmark
 
-Benchmarking suite for the opendic polaris extension.
+This benchmarks driver was developed at ITU as part of a the Master thesis: OpenDict: An Approach to Open Management of All Metadata Objects.
 
-## Running the benchmark driver:
+**Authors**: Andreas Kongstad & Carl Bruun
+
+![Screenshot of error](assets/Screenshot%202025-06-02%20at%2002.33.09.png)
+
+## Overview
+
+- **results**: Parquet files containing exported benchmark results.  
+- **src**: Source code for the benchmark driver.  
+- **utils**: Utility scripts (e.g., for exporting results to Parquet).  
+- **taskfile.toml**: Task definitions (e.g., commands to run a PostgreSQL Docker container for experiments).
+
+## Running the benchmark driver
 
 Syntax:
 
@@ -29,7 +40,7 @@ uv run python utils/export_parquet.py \
     --db experiment_logs.db
 ```
 
-### Running postgres:
+### Running postgres
 
 Make sure to the postgres docker container is running (Requires `task` and `docker` ):
 
@@ -51,7 +62,7 @@ task run:pg-container
 uv run python src/opendic_benchmark/main.py --db postgres --exp standard_table
 ```
 
-### Running snowflake:
+### Running snowflake
 
 Make sure you add the following to `secrets/postgres-conf.toml`, refer to the snowflake documentation to find the values: <https://docs.snowflake.com/en/user-guide/snowsql-config>. The config can be the same one tha snowsql uses.
 
@@ -68,7 +79,7 @@ database = "<db>"
 uv run python src/opendic_benchmark/main.py --db snowflake --exp standard_table
 ```
 
-### Running opendict:
+### Running opendict
 
 Refer to <https://github.com/msc-open-metadata/polaris-boot> for infra structure and bootsrapping setup we use to run an instance of our extended polaris via docker compose.
 
@@ -87,7 +98,7 @@ uv run python utils/export_parquet.py \
 
 ## Notes from benchmark runs
 
-### Internet speed for snowflake/cloud experiments:
+### Internet speed for snowflake/cloud experiments
 
 100-250 MBps down. 50 up
 
@@ -167,6 +178,6 @@ Opendic new batch
 
 Opendic new file
 
-- Storage usage:
-- Datafiles:
-- Metadatafiles:
+- Storage usage: 114 MB
+- Datafiles: 1298
+- Metadatafiles: 3925
