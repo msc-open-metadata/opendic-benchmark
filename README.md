@@ -2,7 +2,7 @@
 
 This benchmarks driver was developed at ITU as part of a the Master thesis: OpenDict: An Approach to Open Management of All Metadata Objects.
 
-**Purpose**: The main purpose of this benchmark suite is to run the metadata operation performance experiment against widely used database systems and different OpenDict configurations.
+**Purpose**: Benchmark suite for runing the metadata operation performance experiment against widely used database systems and different OpenDict configurations.
 
 **Authors**: Andreas Kongstad & Carl Bruun
 
@@ -10,9 +10,9 @@ This benchmarks driver was developed at ITU as part of a the Master thesis: Open
 
 ## Overview
 
-- **results**: Parquet files containing exported benchmark results.  
-- **src**: Source code for the benchmark driver.  
-- **utils**: Utility scripts (e.g., for exporting results to Parquet).  
+- **results**: Parquet files containing exported benchmark results.
+- **src**: Source code for the benchmark driver.
+- **utils**: Utility scripts (e.g., for exporting results to Parquet).
 - **taskfile.toml**: Task definitions (e.g., commands to run a PostgreSQL Docker container for experiments).
 
 ## Running the benchmark driver
