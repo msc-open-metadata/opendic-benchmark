@@ -5,8 +5,8 @@ This benchmarks driver was developed at ITU as part of a the Master thesis: Open
 **Purpose**: Benchmark suite for runing the metadata operation performance experiment against widely used database systems and different OpenDict configurations.
 
 **Authors**: Andreas Kongstad & Carl Bruun
-
-![Screenshot of error](assets/Screenshot%202025-06-02%20at%2002.33.09.png)
+![terminat-video](assets/output.gif)
+<!-- ![x](assets/Screenshot%202025-06-02%20at%2002.33.09.png) -->
 
 ## Overview
 
